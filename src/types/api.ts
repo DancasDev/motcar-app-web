@@ -1,11 +1,27 @@
+export interface ApiMessages {
+  success?: string
+  error?: string
+  warning?: string
+  info?: string
+}
+
 export interface ApiResponse<T = unknown> {
+  status: number
   data: T
-  message?: string
-  success: boolean
+  messages?: ApiMessages
+  error?: string
 }
 
 export interface ApiErrorResponse {
-  message: string
+  status: number
+  error?: string
+  messages?: ApiMessages
   errors?: Record<string, string[]>
-  statusCode: number
+}
+
+export interface PaginatedList<T> {
+  items: T[]
+  total?: number
+  page?: number
+  itemsPerPage?: number
 }

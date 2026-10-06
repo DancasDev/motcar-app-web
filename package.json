@@ -9,6 +9,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@dancasdev/gac-client": "^1.0.0",
     "@mdi/font": "^7.4.47",
     "axios": "^1.20.0",
     "pinia": "^4.0.3",
