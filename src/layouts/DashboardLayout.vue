@@ -1,18 +1,15 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
+import { ref, onMounted, onBeforeUnmount } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
-import { useTheme } from 'vuetify'
 import { useAuthStore } from '@/modules/auth/stores/auth.store'
 import { useMyStore } from '@/modules/my/stores/my.store'
 import { useBranchesStore } from '@/modules/branches/stores/branches.store'
-import HeaderControls from '@/components/common/HeaderControls.vue'
 
 const authStore = useAuthStore()
 const myStore = useMyStore()
 const branchesStore = useBranchesStore()
 const router = useRouter()
 const route = useRoute()
-const theme = useTheme()
 
 const drawer = ref(true)
 const notificationsMenuOpen = ref(false)
@@ -20,8 +17,6 @@ const userMenuOpen = ref(false)
 const isScrolled = ref(false)
 const isSyncingAccess = ref(false)
 const syncSuccessSnackbar = ref(false)
-
-const isDark = computed(() => theme.global.current.value.dark)
 
 function handleScroll(): void {
   isScrolled.value = window.scrollY > 15
@@ -115,7 +110,7 @@ const navGroups = [
         <!-- 1. Cabecera con Marca -->
         <div class="pa-4 d-flex align-center border-b">
           <v-img
-            src="/motcar-logo.png"
+            src="/images/motcar-logo.png"
             alt="Motcar"
             max-width="44"
             height="auto"
@@ -206,7 +201,7 @@ const navGroups = [
       elevation="0"
       density="comfortable"
       :class="['topbar-bar', { 'topbar-glass': isScrolled, 'border-b': isScrolled }]"
-      :color="isScrolled ? (isDark ? 'rgba(15, 23, 42, 0.85)' : 'rgba(255, 255, 255, 0.85)') : 'surface'"
+      :color="isScrolled ? 'rgba(255, 255, 255, 0.85)' : 'surface'"
     >
       <v-app-bar-nav-icon
         @click="drawer = !drawer"
@@ -283,9 +278,6 @@ const navGroups = [
           </v-list>
         </v-card>
       </v-menu>
-
-      <!-- Controles de Encabezado: Idioma + Tema Oscuro/Claro -->
-      <HeaderControls class="mr-2" />
 
       <!-- Campana de Notificaciones -->
       <v-menu

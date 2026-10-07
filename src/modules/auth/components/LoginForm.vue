@@ -1,61 +1,65 @@
 <script setup lang="ts">
-import { ref, reactive, watch } from 'vue'
-import { useAuthStore } from '../stores/auth.store'
-import type { LoginUserRequest } from '../types'
-import PasswordRecoveryDialog from '@/modules/system/components/PasswordRecoveryDialog.vue'
+import { ref, reactive, watch } from "vue";
+import { useAuthStore } from "../stores/auth.store";
+import type { LoginUserRequest } from "../types";
+import PasswordRecoveryDialog from "@/modules/system/components/PasswordRecoveryDialog.vue";
 
 const emit = defineEmits<{
-  (e: 'success'): void
-}>()
+  (e: "success"): void;
+}>();
 
-const authStore = useAuthStore()
+const authStore = useAuthStore();
 
-const formRef = ref<{ validate: () => Promise<{ valid: boolean }> } | null>(null)
-const showPassword = ref(false)
-const isRecoveryOpen = ref(false)
-const recoverySuccessSnackbar = ref(false)
-const isShaking = ref(false)
+const formRef = ref<{ validate: () => Promise<{ valid: boolean }> } | null>(
+  null,
+);
+const showPassword = ref(false);
+const isRecoveryOpen = ref(false);
+const recoverySuccessSnackbar = ref(false);
+const isShaking = ref(false);
 
 function handleRecoverySuccess(_email: string): void {
-  recoverySuccessSnackbar.value = true
+  recoverySuccessSnackbar.value = true;
 }
 
 const credentials = reactive<LoginUserRequest>({
-  username: '',
-  password: ''
-})
+  username: "",
+  password: "",
+});
 
 const rules = {
-  required: (v: string) => !!v?.trim() || 'Este campo es obligatorio.',
-  minUser: (v: string) => (v && v.length >= 5) || 'El usuario debe tener al menos 5 caracteres.',
-  minPass: (v: string) => (v && v.length >= 8) || 'La contraseña debe tener al menos 8 caracteres.'
-}
+  required: (v: string) => !!v?.trim() || "Este campo es obligatorio.",
+  minUser: (v: string) =>
+    (v && v.length >= 5) || "El usuario debe tener al menos 5 caracteres.",
+  minPass: (v: string) =>
+    (v && v.length >= 8) || "La contraseña debe tener al menos 8 caracteres.",
+};
 
 // Sacudir al registrar error de autenticación (igual que SGA)
 watch(
   () => authStore.error,
   (val) => {
     if (val) {
-      isShaking.value = true
+      isShaking.value = true;
       setTimeout(() => {
-        isShaking.value = false
-      }, 600)
+        isShaking.value = false;
+      }, 600);
     }
-  }
-)
+  },
+);
 
 async function handleSubmit(): Promise<void> {
-  if (!formRef.value) return
+  if (!formRef.value) return;
 
-  const { valid } = await formRef.value.validate()
-  if (!valid) return
+  const { valid } = await formRef.value.validate();
+  if (!valid) return;
 
   try {
     await authStore.login({
       username: credentials.username.trim(),
-      password: credentials.password
-    })
-    emit('success')
+      password: credentials.password,
+    });
+    emit("success");
   } catch {
     // Error en authStore.error activa watch y shake
   }
@@ -65,12 +69,18 @@ async function handleSubmit(): Promise<void> {
 <template>
   <div :class="['w-100', { 'animate-shake': isShaking }]">
     <!-- Encabezado de Bienvenida -->
-    <div class="mb-6">
-      <h2 class="text-h4 font-weight-bold text-high-emphasis mb-1" style="letter-spacing: -0.02em;">
-        Bienvenido
+    <div class="mb-8">
+      <h2
+        class="text-h4 font-weight-bold text-high-emphasis mb-1"
+        style="letter-spacing: -0.025em; line-height: 1.2"
+      >
+        ¡Bienvenido de nuevo!
       </h2>
-      <p class="text-body-2 text-medium-emphasis">
-        Ingresa tus credenciales para acceder a la plataforma
+      <p
+        class="text-body-2 text-medium-emphasis mt-3"
+        style="line-height: 1.45"
+      >
+        Accede a tu cuenta para gestionar las operaciones de financiamiento
       </p>
     </div>
 
@@ -82,7 +92,7 @@ async function handleSubmit(): Promise<void> {
       closable
       density="comfortable"
       rounded="lg"
-      class="mb-5 text-body-2"
+      class="mb-6 text-body-2"
       icon="mdi-alert-circle-outline"
       @click:close="authStore.error = null"
     >
@@ -107,14 +117,16 @@ async function handleSubmit(): Promise<void> {
         />
       </div>
 
-      <div class="mb-1">
+      <div class="mb-2">
         <v-text-field
           v-model="credentials.password"
           label="Contraseña"
           placeholder="••••••••"
           prepend-inner-icon="mdi-lock-outline"
           :type="showPassword ? 'text' : 'password'"
-          :append-inner-icon="showPassword ? 'mdi-eye-off-outline' : 'mdi-eye-outline'"
+          :append-inner-icon="
+            showPassword ? 'mdi-eye-off-outline' : 'mdi-eye-outline'
+          "
           variant="outlined"
           density="comfortable"
           rounded="lg"
@@ -127,12 +139,15 @@ async function handleSubmit(): Promise<void> {
       </div>
 
       <!-- Enlace para Recuperación de Contraseña -->
-      <div class="d-flex justify-end mb-6">
+      <div class="d-flex justify-end mb-8 mt-2">
         <v-btn
           variant="plain"
           color="primary"
           size="small"
-          :class="['text-none font-weight-medium px-0', { 'animate-shake': isShaking }]"
+          :class="[
+            'text-none font-weight-medium px-0 text-body-2',
+            { 'animate-shake': isShaking },
+          ]"
           data-testid="btn-forgot-password"
           @click="isRecoveryOpen = true"
         >
@@ -150,9 +165,9 @@ async function handleSubmit(): Promise<void> {
         rounded="lg"
         prepend-icon="mdi-login"
         :loading="authStore.isLoading"
-        class="text-none font-weight-bold text-subtitle-2 shadow-sm py-3"
+        class="text-none font-weight-bold text-body-1 shadow-sm"
         data-testid="btn-login-submit"
-        style="letter-spacing: 0.02em; height: 48px;"
+        style="letter-spacing: 0.02em; height: 52px"
       >
         Iniciar Sesión
       </v-btn>
@@ -174,7 +189,8 @@ async function handleSubmit(): Promise<void> {
     >
       <div class="d-flex align-center">
         <v-icon icon="mdi-check-circle" class="mr-2" />
-        Contraseña restablecida exitosamente. Inicia sesión con tus nuevas credenciales.
+        Contraseña restablecida exitosamente. Inicia sesión con tus nuevas
+        credenciales.
       </div>
     </v-snackbar>
   </div>

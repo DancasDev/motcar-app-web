@@ -3,7 +3,6 @@ import { ref, reactive, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '../stores/auth.store'
 import { updateMyPassword } from '@/modules/my/api/my.api'
-import HeaderControls from '@/components/common/HeaderControls.vue'
 
 const router = useRouter()
 const authStore = useAuthStore()
@@ -67,7 +66,7 @@ async function handleLogout(): Promise<void> {
     <header class="forced-header px-6 py-3 bg-surface border-b d-flex align-center justify-space-between">
       <div class="d-flex align-center">
         <v-img
-          src="/motcar-logo.png"
+          src="/images/motcar-logo.png"
           alt="MotCar"
           max-width="140"
           height="auto"
@@ -75,10 +74,6 @@ async function handleLogout(): Promise<void> {
       </div>
 
       <div class="d-flex align-center" style="gap: 12px;">
-        <HeaderControls />
-
-        <v-divider vertical class="mx-1" style="height: 24px;" />
-
         <!-- Cápsula de Usuario -->
         <div class="d-none d-sm-flex align-center user-capsule pa-1 pr-3 rounded-pill border">
           <v-avatar color="primary" size="32" class="mr-2 text-white font-weight-bold text-caption">
