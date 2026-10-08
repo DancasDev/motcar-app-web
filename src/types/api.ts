@@ -3,6 +3,7 @@ export interface ApiMessages {
   error?: string
   warning?: string
   info?: string
+  [field: string]: string | undefined
 }
 
 export interface ApiResponse<T = unknown> {

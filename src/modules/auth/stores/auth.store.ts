@@ -13,16 +13,38 @@ import type {
 import type { AxiosError } from 'axios'
 import type { ApiErrorResponse } from '@/types/api'
 
+function normalizeForceTo(val: unknown): string[] | null {
+  if (!val) return null
+  if (Array.isArray(val)) return val.map(String)
+  if (typeof val === 'string') return val.split(',').map((s) => s.trim()).filter(Boolean)
+  return null
+}
+
+function parseForceToFromToken(rawToken: string | null): string[] | null {
+  if (!rawToken) return null
+  try {
+    const parts = rawToken.split('.')
+    if (parts.length < 2) return null
+    const base64 = parts[1].replace(/-/g, '+').replace(/_/g, '/')
+    const decoded = atob(base64)
+    const payload = JSON.parse(decoded)
+    return normalizeForceTo(payload.fct)
+  } catch {
+    return null
+  }
+}
+
 export const useAuthStore = defineStore('auth', () => {
   // State
-  const token = ref<string | null>(localStorage.getItem(APP_CONFIG.TOKEN_KEY))
+  const initialToken = localStorage.getItem(APP_CONFIG.TOKEN_KEY)
+  const token = ref<string | null>(initialToken)
   const user = ref<AuthUser | null>(null)
   const roles = ref<AuthRole[]>([])
   const permissions = ref<AuthPermissionsMap>({})
   const branches = ref<unknown>(null)
   const tokenExpiry = ref<number | null>(null)
   const tokenRefreshAt = ref<number | null>(null)
-  const forceTo = ref<string[] | null>(null)
+  const forceTo = ref<string[] | null>(parseForceToFromToken(initialToken))
 
   const isLoading = ref<boolean>(false)
   const error = ref<string | null>(null)
@@ -62,7 +84,7 @@ export const useAuthStore = defineStore('auth', () => {
       token.value = tokenData.token
       tokenExpiry.value = tokenData.expires_at
       tokenRefreshAt.value = tokenData.refresh_at
-      forceTo.value = tokenData.force_to
+      forceTo.value = normalizeForceTo(tokenData.force_to) ?? parseForceToFromToken(tokenData.token)
 
       localStorage.setItem(APP_CONFIG.TOKEN_KEY, tokenData.token)
 
@@ -114,6 +136,7 @@ export const useAuthStore = defineStore('auth', () => {
       token.value = tokenData.token
       tokenExpiry.value = tokenData.expires_at
       tokenRefreshAt.value = tokenData.refresh_at
+      forceTo.value = parseForceToFromToken(tokenData.token)
 
       localStorage.setItem(APP_CONFIG.TOKEN_KEY, tokenData.token)
       return true

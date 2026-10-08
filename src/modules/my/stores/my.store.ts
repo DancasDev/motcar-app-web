@@ -62,6 +62,19 @@ export const useMyStore = defineStore('my', () => {
     }
   }
 
+  async function markAllAsRead(): Promise<void> {
+    const unreadItems = notifications.value.filter((n) => !n.read_at)
+    if (unreadItems.length === 0) return
+
+    await Promise.allSettled(unreadItems.map((n) => markNotificationAsRead(n.id)))
+    const now = new Date().toISOString()
+    notifications.value = notifications.value.map((n) => ({
+      ...n,
+      read_at: n.read_at || now
+    }))
+    unreadCount.value = 0
+  }
+
   async function loadChannels(): Promise<NotificationChannelItem[]> {
     isLoading.value = true
     try {
@@ -95,6 +108,7 @@ export const useMyStore = defineStore('my', () => {
     loadUnreadCount,
     loadNotifications,
     markAsRead,
+    markAllAsRead,
     loadChannels,
     saveChannels
   }

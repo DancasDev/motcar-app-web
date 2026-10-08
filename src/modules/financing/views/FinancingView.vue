@@ -47,8 +47,10 @@ function formatLocalized(name: unknown): string {
 // ---------------------------------------------------------------------
 const groupsQuery = useDataQuery<SamGroupItem>(
   async (params) => {
-    const branchId = branchesStore.activeBranchId || 1
-    return fetchSamGroups(branchId, params)
+    if (!branchesStore.activeBranchId) {
+      return { data: [], count: 0, limit: 10, in_trash: false }
+    }
+    return fetchSamGroups(branchesStore.activeBranchId, params)
   },
   {
     initialItemsPerPage: 10,
@@ -169,9 +171,14 @@ const selectedGroupIdForContracts = ref<string | number | null>(null)
 
 const contractsQuery = useDataQuery<ParticipantItem>(
   async (params) => {
-    const branchId = branchesStore.activeBranchId || 1
-    const groupId = selectedGroupIdForContracts.value || financingStore.samGroups[0]?.id || 1
-    return fetchParticipants(branchId, groupId, params)
+    if (!branchesStore.activeBranchId || !selectedGroupIdForContracts.value) {
+      return { data: [], count: 0, limit: 10, in_trash: false }
+    }
+    return fetchParticipants(
+      branchesStore.activeBranchId,
+      selectedGroupIdForContracts.value,
+      params
+    )
   },
   {
     initialItemsPerPage: 10,

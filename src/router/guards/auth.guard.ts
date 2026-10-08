@@ -19,6 +19,7 @@ export function setupAuthGuard(router: Router): void {
     const isGuestOnly = to.matched.some((record) => record.meta.guestOnly)
     const isForcedRoute = to.matched.some((record) => record.meta.isForced)
 
+    // 1. Redirigir a login si la ruta requiere autenticación y no hay sesión activa
     if (requiresAuth && !authStore.isAuthenticated) {
       return next({
         path: '/login',
@@ -26,25 +27,33 @@ export function setupAuthGuard(router: Router): void {
       })
     }
 
-    if (isGuestOnly && authStore.isAuthenticated) {
-      return next({ path: '/' })
-    }
-
-    // Manejo de acciones forzadas (force_to: '0' cambio obligatorio de clave)
+    // 2. Usuario autenticado: Prioridad estricta para acciones forzadas
     if (authStore.isAuthenticated) {
       const forceToFlags = Array.isArray(authStore.forceTo)
         ? authStore.forceTo.map(String)
-        : (typeof authStore.forceTo === 'string' ? (authStore.forceTo as string).split(',').map((s) => s.trim()) : [])
+        : (typeof authStore.forceTo === 'string'
+            ? (authStore.forceTo as string).split(',').map((s) => s.trim())
+            : [])
 
       const hasForcePassword = forceToFlags.includes('0')
 
-      if (hasForcePassword && !isForcedRoute) {
-        return next({ path: '/force-password-change' })
+      // Si tiene cambio obligatorio de contraseña, no permitir ninguna otra ruta
+      if (hasForcePassword) {
+        if (!isForcedRoute) {
+          return next({ path: '/force-password-change' })
+        }
+        return next()
       }
 
-      if (!hasForcePassword && isForcedRoute) {
+      // Si no tiene cambio forzado pero intenta entrar a la ruta forzada, desviar al home
+      if (isForcedRoute) {
         return next({ path: '/' })
       }
+    }
+
+    // 3. Rutas exclusivas de invitados (ej: /login): redirigir a inicio si ya está autenticado
+    if (isGuestOnly && authStore.isAuthenticated) {
+      return next({ path: '/' })
     }
 
     return next()

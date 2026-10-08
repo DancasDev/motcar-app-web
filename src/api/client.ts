@@ -2,6 +2,13 @@ import axios, { type InternalAxiosRequestConfig, type AxiosError } from 'axios'
 import { ENV } from '@/config/env'
 import { APP_CONFIG } from '@/config/constants'
 import { ENDPOINTS } from '@/api/endpoints'
+import type { ApiErrorResponse } from '@/types/api'
+import {
+  API_ERROR_CODES,
+  isSessionExpiredError,
+  isBranchScopeError
+} from '@/api/errors'
+import { router } from '@/router'
 
 export const apiClient = axios.create({
   baseURL: ENV.API_BASE_URL,
@@ -26,7 +33,7 @@ apiClient.interceptors.request.use(
   }
 )
 
-// Response Interceptor: Capturar 401 y gestionar cierre de sesión
+// Response Interceptor: Tratamiento semántico de respuestas según opencollection.yml
 apiClient.interceptors.response.use(
   (response) => response,
   async (error: AxiosError) => {
@@ -39,13 +46,36 @@ apiClient.interceptors.response.use(
         requestUrl.includes(ENDPOINTS.AUTH.USER.REFRESH) ||
         requestUrl.includes(ENDPOINTS.AUTH.CLIENT.LOGIN)
 
-      // Si el 401 ocurre en login o refresh, propagar error sin bucle
-      if (!isAuthEndpoint) {
+      // 1. En endpoints de autenticación directa, propagar para manejo en el formulario
+      if (isAuthEndpoint) {
+        return Promise.reject(error)
+      }
+
+      const errorData = error.response.data as ApiErrorResponse | undefined
+      const errorCode = errorData?.error
+
+      // 2. Acción forzada de cambio de contraseña: el token es válido, dirigir a la vista forzada
+      if (errorCode === API_ERROR_CODES.AUTH_PASSWORD_CHANGE_REQUIRED) {
+        if (router.currentRoute.value.path !== '/force-password-change') {
+          router.push('/force-password-change')
+        }
+        return Promise.reject(error)
+      }
+
+      // 3. Error de sucursal no disponible: no destruir sesión, es un error de contexto/recurso
+      if (isBranchScopeError(errorCode)) {
+        return Promise.reject(error)
+      }
+
+      // 4. Token caducado o revocado: limpiar sesión y dirigir a login
+      if (!errorCode || isSessionExpiredError(errorCode)) {
         localStorage.removeItem(APP_CONFIG.TOKEN_KEY)
-        // Redirigir a login si estamos en el navegador y no estamos ya en /login
-        if (typeof window !== 'undefined' && !window.location.pathname.includes('/login')) {
-          const currentPath = window.location.pathname + window.location.search
-          window.location.href = `/login?redirect=${encodeURIComponent(currentPath)}`
+        if (router.currentRoute.value.path !== '/login') {
+          const currentPath = router.currentRoute.value.fullPath
+          router.push({
+            path: '/login',
+            query: currentPath && currentPath !== '/' ? { redirect: currentPath } : undefined
+          })
         }
       }
     }

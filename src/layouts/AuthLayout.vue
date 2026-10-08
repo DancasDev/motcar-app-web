@@ -4,7 +4,7 @@ import AppCopyright from '@/components/common/AppCopyright.vue'
 
 <template>
   <v-main class="auth-layout fill-height pa-0">
-    <v-row no-gutters class="fill-height">
+    <v-row no-gutters class="fill-height auth-main-row">
       <!-- Columna Izquierda: Hero Corporativo con imagen desenfocada y propuesta de valor (Desktop) -->
       <v-col
         cols="12"
@@ -36,10 +36,10 @@ import AppCopyright from '@/components/common/AppCopyright.vue'
         md="7"
         lg="7"
         xl="8"
-        class="d-flex flex-column justify-space-between pa-6 pa-sm-10 pa-md-12 bg-surface position-relative"
+        class="auth-content-col d-flex flex-column pa-6 pa-sm-10 pa-md-12 bg-surface position-relative"
       >
-        <!-- Logo posicionado en la esquina superior izquierda (estilo nav) -->
-        <div class="d-flex align-center w-100">
+        <!-- Logo posicionado en la parte superior (fijo, sin scroll) -->
+        <div class="d-flex align-center w-100 flex-shrink-0">
           <v-img
             src="/images/motcar-logo.png"
             alt="MotCar Financiamientos"
@@ -48,15 +48,15 @@ import AppCopyright from '@/components/common/AppCopyright.vue'
           />
         </div>
 
-        <!-- Contenedor Centrado de la Vista Activa -->
-        <div class="d-flex align-center justify-center flex-grow-1 my-auto py-6">
-          <div style="width: 100%; max-width: 440px;">
+        <!-- Contenedor con scroll interno exclusivo para la parte del formulario -->
+        <div class="auth-form-scroll-container flex-grow-1 overflow-y-auto overflow-x-hidden">
+          <div class="auth-form-inner mx-auto w-100" style="max-width: 440px;">
             <router-view />
           </div>
         </div>
 
-        <!-- Pie de Página -->
-        <div class="pt-6">
+        <!-- Pie de Página (fijo, sin scroll) -->
+        <div class="pt-4 flex-shrink-0">
           <AppCopyright />
         </div>
       </v-col>
@@ -65,6 +65,54 @@ import AppCopyright from '@/components/common/AppCopyright.vue'
 </template>
 
 <style scoped>
+.auth-layout {
+  height: 100vh;
+  max-height: 100dvh;
+  overflow: hidden;
+}
+
+.auth-main-row {
+  height: 100%;
+  max-height: 100dvh;
+}
+
+.auth-content-col {
+  height: 100%;
+  max-height: 100dvh;
+  overflow: hidden;
+}
+
+.auth-form-scroll-container {
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(0, 0, 0, 0.15) transparent;
+}
+
+.auth-form-scroll-container::-webkit-scrollbar {
+  width: 6px;
+}
+
+.auth-form-scroll-container::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.auth-form-scroll-container::-webkit-scrollbar-thumb {
+  background: rgba(0, 0, 0, 0.15);
+  border-radius: 999px;
+}
+
+.auth-form-scroll-container::-webkit-scrollbar-thumb:hover {
+  background: rgba(0, 0, 0, 0.25);
+}
+
+.auth-form-inner {
+  margin-top: auto;
+  margin-bottom: auto;
+  padding: 16px 0;
+}
+
 .auth-hero {
   background-color: #07264a;
 }

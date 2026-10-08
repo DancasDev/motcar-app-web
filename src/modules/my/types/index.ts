@@ -46,3 +46,8 @@ export interface BinnacleItem {
   session_id?: string | null
   description: string
 }
+
+export interface UpdatePasswordPayload {
+  password_current: string
+  password_new: string
+}

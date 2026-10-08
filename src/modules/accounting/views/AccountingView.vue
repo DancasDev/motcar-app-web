@@ -38,8 +38,10 @@ const statusFilter = ref<string>('all')
 
 const receivablesQuery = useDataQuery<AccountReceivableItem>(
   async (params) => {
-    const branchId = branchesStore.activeBranchId || 1
-    return fetchAccountsReceivable(branchId, params)
+    if (!branchesStore.activeBranchId) {
+      return { data: [], count: 0, limit: 10, in_trash: false }
+    }
+    return fetchAccountsReceivable(branchesStore.activeBranchId, params)
   },
   {
     initialItemsPerPage: 10,
@@ -126,8 +128,10 @@ async function handleSyncOverdue(): Promise<void> {
 // ---------------------------------------------------------------------
 const receiptsQuery = useDataQuery<ReceiptItem>(
   async (params) => {
-    const branchId = branchesStore.activeBranchId || 1
-    return fetchReceipts(branchId, params)
+    if (!branchesStore.activeBranchId) {
+      return { data: [], count: 0, limit: 10, in_trash: false }
+    }
+    return fetchReceipts(branchesStore.activeBranchId, params)
   },
   {
     initialItemsPerPage: 10,
@@ -413,8 +417,10 @@ async function handleEmitReceipt(): Promise<void> {
 // ---------------------------------------------------------------------
 const creditsQuery = useDataQuery(
   async (params) => {
-    const branchId = branchesStore.activeBranchId || 1
-    return fetchClientCredits(branchId, params)
+    if (!branchesStore.activeBranchId) {
+      return { data: [], count: 0, limit: 10, in_trash: false }
+    }
+    return fetchClientCredits(branchesStore.activeBranchId, params)
   },
   {
     initialItemsPerPage: 10,
@@ -457,6 +463,18 @@ watch(
 
 <template>
   <div class="accounting-view">
+    <!-- Alerta de Sucursal Activa Requerida -->
+    <v-alert
+      v-if="!branchesStore.activeBranchId"
+      type="warning"
+      variant="tonal"
+      rounded="lg"
+      title="Sucursal no seleccionada"
+      text="Para gestionar Cuentas por Cobrar, Recibos de Caja y Conciliación Bancaria, debes seleccionar una Sucursal Activa en la barra superior."
+      class="mb-4"
+      data-testid="no-branch-alert-accounting"
+    />
+
     <!-- Encabezado de la Vista -->
     <v-card class="mb-4" elevation="1" rounded="lg">
       <v-card-text class="d-flex flex-column flex-sm-row justify-space-between align-start align-sm-center ga-3">

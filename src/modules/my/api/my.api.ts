@@ -7,7 +7,8 @@ import type {
   UnreadCountData,
   NotificationChannelItem,
   UpdateChannelsPayload,
-  BinnacleItem
+  BinnacleItem,
+  UpdatePasswordPayload
 } from '../types'
 
 /**
@@ -87,6 +88,11 @@ export async function fetchMyBinnacles(
 /**
  * Actualiza la contraseña del usuario autenticado (limpia force_to='0')
  */
-export async function updateMyPassword(password: string): Promise<void> {
-  await apiClient.put(ENDPOINTS.MY.PASSWORD, { password })
+export async function updateMyPassword(
+  payload: UpdatePasswordPayload
+): Promise<ApiResponse<{ id: number; affected: boolean; require_login: boolean }>> {
+  const response = await apiClient.put<
+    ApiResponse<{ id: number; affected: boolean; require_login: boolean }>
+  >(ENDPOINTS.MY.PASSWORD, payload)
+  return response.data
 }

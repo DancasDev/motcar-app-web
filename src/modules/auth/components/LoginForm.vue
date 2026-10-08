@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { ref, reactive, watch } from "vue";
+import { ref, reactive, watch, onMounted } from "vue";
+import { useRoute } from "vue-router";
 import { useAuthStore } from "../stores/auth.store";
 import type { LoginUserRequest } from "../types";
 import PasswordRecoveryDialog from "@/modules/system/components/PasswordRecoveryDialog.vue";
@@ -8,6 +9,7 @@ const emit = defineEmits<{
   (e: "success"): void;
 }>();
 
+const route = useRoute();
 const authStore = useAuthStore();
 
 const formRef = ref<{ validate: () => Promise<{ valid: boolean }> } | null>(
@@ -16,7 +18,14 @@ const formRef = ref<{ validate: () => Promise<{ valid: boolean }> } | null>(
 const showPassword = ref(false);
 const isRecoveryOpen = ref(false);
 const recoverySuccessSnackbar = ref(false);
+const showPasswordUpdatedAlert = ref(false);
 const isShaking = ref(false);
+
+onMounted(() => {
+  if (route.query.passwordUpdated === "1") {
+    showPasswordUpdatedAlert.value = true;
+  }
+});
 
 function handleRecoverySuccess(_email: string): void {
   recoverySuccessSnackbar.value = true;
@@ -83,6 +92,21 @@ async function handleSubmit(): Promise<void> {
         Accede a tu cuenta para gestionar las operaciones de financiamiento
       </p>
     </div>
+
+    <!-- Alerta de Contraseña Actualizada -->
+    <v-alert
+      v-if="showPasswordUpdatedAlert"
+      type="success"
+      variant="tonal"
+      closable
+      density="comfortable"
+      rounded="lg"
+      class="mb-6 text-body-2"
+      icon="mdi-check-circle-outline"
+      @click:close="showPasswordUpdatedAlert = false"
+    >
+      Contraseña actualizada exitosamente. Por favor, inicia sesión con tu nueva contraseña.
+    </v-alert>
 
     <!-- Alerta de Error con Ícono e Identidad Limpia -->
     <v-alert

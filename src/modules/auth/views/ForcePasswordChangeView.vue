@@ -7,48 +7,89 @@ import { updateMyPassword } from '@/modules/my/api/my.api'
 const router = useRouter()
 const authStore = useAuthStore()
 
-const showPassword = ref(false)
+const showCurrentPassword = ref(false)
+const showNewPassword = ref(false)
 const showConfirmPassword = ref(false)
 const isLoading = ref(false)
 const errorMessage = ref('')
 const formRef = ref<{ validate: () => Promise<{ valid: boolean }> } | null>(null)
 
+const fieldErrors = reactive({
+  password_current: '',
+  password_new: ''
+})
+
 const formData = reactive({
-  password: '',
+  password_current: '',
+  password_new: '',
   confirm_password: ''
 })
 
 const passwordCriteria = computed(() => [
-  { label: 'Entre 8 y 30 caracteres', valid: formData.password.length >= 8 && formData.password.length <= 30 },
-  { label: 'Al menos una letra mayúscula (A-Z)', valid: /[A-Z]/.test(formData.password) },
-  { label: 'Al menos una letra minúscula (a-z)', valid: /[a-z]/.test(formData.password) },
-  { label: 'Al menos un número (0-9)', valid: /\d/.test(formData.password) },
-  { label: 'Al menos un carácter especial (!@#$%^&*...)', valid: /[!@#$%^&*()_+\[\]{}|;:,.<>?\-]/.test(formData.password) }
+  { label: 'Entre 8 y 30 caracteres', valid: formData.password_new.length >= 8 && formData.password_new.length <= 30 },
+  { label: 'Al menos una letra mayúscula (A-Z)', valid: /[A-Z]/.test(formData.password_new) },
+  { label: 'Al menos una letra minúscula (a-z)', valid: /[a-z]/.test(formData.password_new) },
+  { label: 'Al menos un número (0-9)', valid: /\d/.test(formData.password_new) },
+  { label: 'Al menos un carácter especial (!@#$%^&*...)', valid: /[!@#$%^&*()_+\[\]{}|;:,.<>?\-]/.test(formData.password_new) }
 ])
 
+const isCurrentPasswordValid = computed(() => !!formData.password_current.trim())
 const isPasswordValid = computed(() => passwordCriteria.value.every((c) => c.valid))
-const doPasswordsMatch = computed(() => formData.password && formData.password === formData.confirm_password)
+const doPasswordsMatch = computed(() => !!formData.password_new && formData.password_new === formData.confirm_password)
+const isDifferentFromCurrent = computed(
+  () => !formData.password_current || formData.password_current !== formData.password_new
+)
+
+const canSubmit = computed(
+  () =>
+    isCurrentPasswordValid.value &&
+    isPasswordValid.value &&
+    doPasswordsMatch.value &&
+    isDifferentFromCurrent.value
+)
 
 async function handleSubmit(): Promise<void> {
   if (!formRef.value) return
   const { valid } = await formRef.value.validate()
-  if (!valid || !isPasswordValid.value || !doPasswordsMatch.value) return
+  if (!valid || !canSubmit.value) return
 
   isLoading.value = true
   errorMessage.value = ''
+  fieldErrors.password_current = ''
+  fieldErrors.password_new = ''
 
   try {
-    await updateMyPassword(formData.password)
-    // Limpiar bandera force_to localmente y refrescar usuario
-    authStore.forceTo = null
-    await authStore.fetchCurrentUser()
-    router.push('/')
+    await updateMyPassword({
+      password_current: formData.password_current,
+      password_new: formData.password_new
+    })
+    // El backend revoca todas las sesiones previas (require_login: true)
+    authStore.clearSession()
+    router.push({
+      path: '/login',
+      query: { passwordUpdated: '1' }
+    })
   } catch (err: any) {
-    errorMessage.value =
-      err?.response?.data?.messages?.error ||
-      err?.response?.data?.messages?.password ||
-      err?.message ||
-      'Error al actualizar la contraseña.'
+    const errorData = err?.response?.data
+    if (errorData?.messages && typeof errorData.messages === 'object') {
+      if (errorData.messages.password_current) {
+        fieldErrors.password_current = errorData.messages.password_current
+      }
+      if (errorData.messages.password_new) {
+        fieldErrors.password_new = errorData.messages.password_new
+      }
+      if (errorData.messages.error) {
+        errorMessage.value = errorData.messages.error
+      } else if (!fieldErrors.password_current && !fieldErrors.password_new) {
+        errorMessage.value = Object.values(errorData.messages).join(' ')
+      }
+    } else if (typeof errorData?.messages === 'string') {
+      errorMessage.value = errorData.messages
+    } else if (typeof errorData?.error === 'string') {
+      errorMessage.value = errorData.error
+    } else {
+      errorMessage.value = err?.message || 'Error al actualizar la contraseña.'
+    }
   } finally {
     isLoading.value = false
   }
@@ -139,18 +180,42 @@ async function handleLogout(): Promise<void> {
 
         <v-form ref="formRef" @submit.prevent="handleSubmit">
           <v-text-field
-            v-model="formData.password"
-            label="Nueva contraseña"
-            placeholder="Introduce tu nueva contraseña"
+            v-model="formData.password_current"
+            label="Contraseña actual"
+            placeholder="Introduce tu contraseña actual"
             prepend-inner-icon="mdi-lock-outline"
-            :type="showPassword ? 'text' : 'password'"
-            :append-inner-icon="showPassword ? 'mdi-eye-off-outline' : 'mdi-eye-outline'"
+            :type="showCurrentPassword ? 'text' : 'password'"
+            :append-inner-icon="showCurrentPassword ? 'mdi-eye-off-outline' : 'mdi-eye-outline'"
             variant="outlined"
             density="comfortable"
             rounded="lg"
+            :error-messages="fieldErrors.password_current ? [fieldErrors.password_current] : []"
             class="mb-3"
-            data-testid="input-force-password"
-            @click:append-inner="showPassword = !showPassword"
+            autocomplete="current-password"
+            data-testid="input-force-password-current"
+            @input="fieldErrors.password_current = ''"
+            @click:append-inner="showCurrentPassword = !showCurrentPassword"
+          />
+
+          <v-text-field
+            v-model="formData.password_new"
+            label="Nueva contraseña"
+            placeholder="Introduce tu nueva contraseña"
+            prepend-inner-icon="mdi-lock-plus-outline"
+            :type="showNewPassword ? 'text' : 'password'"
+            :append-inner-icon="showNewPassword ? 'mdi-eye-off-outline' : 'mdi-eye-outline'"
+            variant="outlined"
+            density="comfortable"
+            rounded="lg"
+            :error-messages="[
+              ...(formData.password_new && formData.password_current && !isDifferentFromCurrent ? ['La nueva contraseña debe ser diferente a la actual'] : []),
+              ...(fieldErrors.password_new ? [fieldErrors.password_new] : [])
+            ]"
+            class="mb-3"
+            autocomplete="new-password"
+            data-testid="input-force-password-new"
+            @input="fieldErrors.password_new = ''"
+            @click:append-inner="showNewPassword = !showNewPassword"
           />
 
           <v-text-field
@@ -165,6 +230,7 @@ async function handleLogout(): Promise<void> {
             rounded="lg"
             :error-messages="formData.confirm_password && !doPasswordsMatch ? ['Las contraseñas no coinciden'] : []"
             class="mb-4"
+            autocomplete="new-password"
             data-testid="input-force-confirm-password"
             @click:append-inner="showConfirmPassword = !showConfirmPassword"
           />
@@ -198,7 +264,7 @@ async function handleLogout(): Promise<void> {
             size="large"
             rounded="lg"
             variant="flat"
-            :disabled="!isPasswordValid || !doPasswordsMatch"
+            :disabled="!canSubmit"
             :loading="isLoading"
             class="text-none font-weight-bold"
             style="height: 48px;"
