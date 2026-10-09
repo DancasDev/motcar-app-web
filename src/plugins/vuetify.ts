@@ -57,6 +57,9 @@ export const vuetify = createVuetify({
     VDataTableServer: {
       density: 'comfortable',
       hover: true
+    },
+    VTooltip: {
+      location: 'top'
     }
   }
 })

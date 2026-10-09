@@ -20,7 +20,9 @@ export const ENDPOINTS = {
     TIMEZONES: '/v1/catalogs/timezones',
     DOCUMENT_TYPES: '/v1/catalogs/document-types',
     NOTIFICATION_TYPES: '/v1/catalogs/notification-types',
-    LANGUAGES: '/v1/catalogs/languages'
+    LANGUAGES: '/v1/catalogs/languages',
+    PERSONS: '/v1/catalogs/persons',
+    PERSON_BY_ID: (id: string | number) => `/v1/catalogs/persons/${id}`
   },
   MY: {
     NOTIFICATIONS: '/v1/my/notifications',

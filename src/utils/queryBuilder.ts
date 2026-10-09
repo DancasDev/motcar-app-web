@@ -2,9 +2,12 @@ import type {
   VuetifyTableOptions,
   DqbFilterItem,
   DqbFilterTuple,
+  DqbRelationalOperator,
+  DqbLogicalOperator,
   DqbOrder,
   DataQueryParams
 } from '@/types/query'
+
 
 export interface QueryBuilderConfig {
   /**
@@ -84,3 +87,35 @@ export function buildDqbParams(
 
   return params
 }
+
+/**
+ * Construye un array de tuplas de filtro DQB para un campo a partir de uno o varios valores.
+ * Si no hay valores (o el array está vacío), retorna null.
+ * El primer elemento utiliza el operador lógico inicial ('AND' por defecto),
+ * y los siguientes elementos utilizan 'OR'.
+ *
+ * @param field - Nombre de la columna o campo a filtrar (ej. 'status')
+ * @param values - Valor individual o array de valores seleccionados
+ * @param operator - Operador relacional DQB (por defecto '=')
+ * @param firstLogicalOperator - Operador lógico para el primer elemento (por defecto 'AND')
+ */
+export function buildDqbFieldFilter(
+  field: string,
+  values: any | any[] | null | undefined,
+  operator: DqbRelationalOperator = '=',
+  firstLogicalOperator: DqbLogicalOperator = 'AND'
+): DqbFilterTuple[] | null {
+  if (!field) return null
+  if (values === null || values === undefined) return null
+
+  const arrayValues = Array.isArray(values) ? values : [values]
+  if (arrayValues.length === 0) return null
+
+  return arrayValues.map((val, index) => [
+    field,
+    val,
+    operator,
+    index === 0 ? firstLogicalOperator : 'OR'
+  ])
+}
+

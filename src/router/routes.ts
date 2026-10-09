@@ -55,48 +55,34 @@ export const routes: RouteRecordRaw[] = [
         meta: { title: 'Inicio - Motcar App', requiresAuth: true, showBranchSelector: true }
       },
       {
-        path: 'catalogs',
-        name: 'Catalogs',
-        component: () => import('@/modules/catalogs/views/CatalogsView.vue'),
-        meta: { title: 'Catálogos - Motcar App', requiresAuth: true, showBranchSelector: true }
-      },
-      {
-        path: 'my/account',
-        name: 'MyAccount',
-        component: () => import('@/modules/my/views/MyAccountView.vue'),
-        meta: { title: 'Mi Cuenta - Motcar App', requiresAuth: true, showBranchSelector: false }
-      },
-      {
-        path: 'access',
-        name: 'Access',
-        component: () => import('@/modules/access/views/AccessView.vue'),
-        meta: { title: 'Control de Acceso - Motcar App', requiresAuth: true, showBranchSelector: false }
-      },
-      {
-        path: 'branches',
-        name: 'Branches',
-        component: () => import('@/modules/branches/views/BranchesView.vue'),
-        meta: { title: 'Sucursales - Motcar App', requiresAuth: true, showBranchSelector: false }
-      },
-      {
         path: 'financing',
-        name: 'Financing',
-        component: () => import('@/modules/financing/views/FinancingView.vue'),
-        meta: { title: 'Financiamiento (SAM) - Motcar App', requiresAuth: true, showBranchSelector: true }
+        redirect: '/financing/groups'
+      },
+      {
+        path: 'financing/groups',
+        name: 'FinancingGroups',
+        component: () => import('@/modules/financing/views/SamGroupsView.vue'),
+        meta: { title: 'Autofinanciamiento Colectivo - Motcar App', requiresAuth: true, showBranchSelector: true }
+      },
+      {
+        path: 'financing/groups/:groupId/participants',
+        name: 'GroupParticipants',
+        component: () => import('@/modules/financing/views/GroupParticipantsView.vue'),
+        meta: { title: 'Participantes del Grupo - Motcar App', requiresAuth: true, showBranchSelector: true }
       },
       {
         path: 'accounting',
         name: 'Accounting',
         component: () => import('@/modules/accounting/views/AccountingView.vue'),
-        meta: { title: 'Contabilidad y Tesorería - Motcar App', requiresAuth: true, showBranchSelector: true }
-      },
-      {
-        path: 'system',
-        name: 'System',
-        component: () => import('@/modules/system/views/SystemView.vue'),
-        meta: { title: 'Sistema y Auditoría - Motcar App', requiresAuth: true, showBranchSelector: false }
+        meta: { title: 'Cobranzas - Motcar App', requiresAuth: true, showBranchSelector: true }
       }
     ]
+  },
+  {
+    path: '/test-metadata',
+    name: 'MetadataTestHarness',
+    component: () => import('@/views/MetadataTestHarnessView.vue'),
+    meta: { title: 'Test Harness - Metadatos', requiresAuth: false }
   },
   {
     path: '/:pathMatch(.*)*',

@@ -70,3 +70,21 @@ export interface NotificationTypeItem {
   updated_at?: string | null
 }
 
+export interface PersonItem {
+  id: string | number
+  identification_type?: string
+  identification_value?: string
+  first_name: string
+  last_name: string
+  phone_primary?: string
+  phone_secondary?: string | null
+  address?: string | null
+  city?: string | null
+  metadata?: Record<string, any> | null
+  is_disabled: string | number | boolean
+  created_at?: string
+  updated_at?: string | null
+  deleted_at?: string | null
+  full_name?: string
+}
+

@@ -92,6 +92,9 @@ export interface ParticipantItem {
   awarded_at?: string | null
   is_disabled?: string | boolean | number
   created_at?: string
+  updated_at?: string | null
+  benefit_metadata?: Record<string, unknown> | null
+  installment_amount?: number | string
 }
 
 export interface CreateParticipantPayload {
@@ -104,9 +107,11 @@ export interface CreateParticipantPayload {
 }
 
 export interface UpdateParticipantPayload {
-  status?: string
-  awarded_at?: string | null
+  advisor_id?: number | string
   position?: number | string
+  status?: string
+  benefit_metadata?: Record<string, unknown>
+  awarded_at?: string | null
   is_disabled?: string
 }
 

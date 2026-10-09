@@ -7,7 +7,8 @@ import type {
   TimeZoneItem,
   DocumentTypeItem,
   CountryTimeZoneItem,
-  NotificationTypeItem
+  NotificationTypeItem,
+  PersonItem
 } from '../types'
 
 /**
@@ -89,6 +90,28 @@ export async function fetchNotificationTypes(
   return response.data
 }
 
+/**
+ * Consulta listado paginado de personas mediante el motor DQB
+ */
+export async function fetchPersons(
+  params?: DataQueryParams
+): Promise<PaginatedResponse<PersonItem>> {
+  const response = await apiClient.get<PaginatedResponse<PersonItem>>(
+    ENDPOINTS.CATALOGS.PERSONS,
+    { params }
+  )
+  return response.data
+}
+
+export async function fetchPersonById(
+  id: string | number
+): Promise<PersonItem> {
+  const response = await apiClient.get<{ data: PersonItem }>(
+    ENDPOINTS.CATALOGS.PERSON_BY_ID(id)
+  )
+  return response.data.data
+}
+
 // Aliases para retrocompatibilidad
 export const getCountries = fetchCountries
 export const getCountryTimeZones = fetchCountryTimezones
@@ -96,4 +119,5 @@ export const getTimeZones = fetchTimezones
 export const getDocumentTypes = fetchDocumentTypes
 export const getLanguages = fetchLanguages
 export const getNotificationTypes = fetchNotificationTypes
+export const getPersons = fetchPersons
 

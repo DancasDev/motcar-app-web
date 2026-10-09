@@ -81,30 +81,10 @@ async function handleSyncAccess(): Promise<void> {
   }
 }
 
-const navGroups = [
-  {
-    title: 'Principal',
-    items: [
-      { to: '/', icon: 'mdi-view-dashboard-outline', title: 'Inicio', testId: 'nav-home' },
-      { to: '/my/account', icon: 'mdi-account-circle-outline', title: 'Mi Cuenta', testId: 'nav-drawer-my-account' },
-      { to: '/catalogs', icon: 'mdi-book-open-page-variant-outline', title: 'Catálogos', testId: 'nav-catalogs' }
-    ]
-  },
-  {
-    title: 'Operaciones',
-    items: [
-      { to: '/financing', icon: 'mdi-handshake-outline', title: 'Financiamiento (SAM)', testId: 'nav-financing' },
-      { to: '/accounting', icon: 'mdi-cash-register', title: 'Contabilidad y Tesorería', testId: 'nav-accounting' }
-    ]
-  },
-  {
-    title: 'Administración',
-    items: [
-      { to: '/branches', icon: 'mdi-office-building-marker-outline', title: 'Sucursales', testId: 'nav-branches' },
-      { to: '/access', icon: 'mdi-shield-lock-outline', title: 'Control de Acceso', testId: 'nav-access' },
-      { to: '/system', icon: 'mdi-cogs', title: 'Sistema y Auditoría', testId: 'nav-system' }
-    ]
-  }
+const navItems = [
+  { to: '/', icon: 'mdi-view-dashboard-outline', title: 'Inicio', testId: 'nav-home' },
+  { to: '/financing/groups', icon: 'mdi-handshake-outline', title: 'Autofinanciamiento Colectivo', testId: 'nav-financing' },
+  { to: '/accounting', icon: 'mdi-cash-register', title: 'Cobranzas', testId: 'nav-accounting' }
 ]
 </script>
 
@@ -149,32 +129,23 @@ const navGroups = [
           </div>
         </div>
 
-        <!-- 2. Lista de Módulos Categorizados -->
+        <!-- 2. Lista de Módulos (Directa sin encabezado de grupo) -->
         <div class="flex-grow-1 overflow-y-auto px-2 py-3 sidebar-scroll">
-          <template v-for="(group, gIdx) in navGroups" :key="gIdx">
-            <div
-              class="px-3 pt-3 pb-1 text-overline font-weight-bold text-grey-lighten-2 sidebar-group-title"
-              style="letter-spacing: 0.08em; font-size: 0.68rem;"
-            >
-              {{ group.title }}
-            </div>
-
-            <v-list density="compact" nav class="pa-0 mb-2 bg-transparent">
-              <v-list-item
-                v-for="item in group.items"
-                :key="item.to"
-                :to="item.to"
-                :prepend-icon="item.icon"
-                :title="item.title"
-                :data-testid="item.testId"
-                rounded="lg"
-                class="mb-1 nav-item-btn text-white"
-                :active="item.to === '/' ? route.path === '/' : route.path.startsWith(item.to)"
-                color="secondary"
-                @click="handleNavClick"
-              />
-            </v-list>
-          </template>
+          <v-list density="compact" nav class="pa-0 bg-transparent">
+            <v-list-item
+              v-for="item in navItems"
+              :key="item.to"
+              :to="item.to"
+              :prepend-icon="item.icon"
+              :title="item.title"
+              :data-testid="item.testId"
+              rounded="lg"
+              class="mb-1 nav-item-btn text-white"
+              :active="item.to === '/' ? route.path === '/' : route.path.startsWith(item.to)"
+              color="secondary"
+              @click="handleNavClick"
+            />
+          </v-list>
         </div>
 
         <!-- 3. Pie del Sidebar: Botón circular centrado con Tooltip en la parte superior -->
@@ -461,16 +432,6 @@ const navGroups = [
               </div>
 
               <v-list density="compact" nav class="py-1.5 px-2">
-                <v-list-item
-                  to="/my/account"
-                  prepend-icon="mdi-account-circle-outline"
-                  title="Mi Cuenta & Seguridad"
-                  data-testid="nav-my-account"
-                  rounded="lg"
-                  class="my-0.5"
-                  @click="userMenuOpen = false; router.push('/my/account')"
-                />
-                <v-divider class="my-1" />
                 <v-list-item
                   prepend-icon="mdi-logout"
                   title="Cerrar Sesión"
