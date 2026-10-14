@@ -1,16 +1,61 @@
 <script setup lang="ts">
-import { ref, watch, onMounted } from 'vue'
+import { ref, computed, watch, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
+import { useDisplay } from 'vuetify'
 import { useBranchesStore } from '@/modules/branches/stores/branches.store'
 import { useFinancingStore } from '../stores/financing.store'
 import { useDataQuery } from '@/composables/useDataQuery'
-import { fetchSamGroups } from '../api/financing.api'
-import type { SamGroupItem, CreateSamGroupPayload } from '../types'
+import { fetchSamGroups, fetchBranchSummary } from '../api/financing.api'
+import type { SamGroupItem, CreateSamGroupPayload, BranchSummaryReport, BranchSummaryGroupItem } from '../types'
 import type { DqbFilterTuple } from '@/types/query'
+import { money } from '@/utils/format'
 
 const router = useRouter()
+const { smAndDown } = useDisplay()
 const branchesStore = useBranchesStore()
 const financingStore = useFinancingStore()
+
+// Resumen general de sucursal
+const branchSummary = ref<BranchSummaryReport | null>(null)
+const isLoadingSummary = ref(false)
+
+const groupsSummaryMap = computed<Record<number, BranchSummaryGroupItem>>(() => {
+  const map: Record<number, BranchSummaryGroupItem> = {}
+  if (branchSummary.value?.groups) {
+    for (const g of branchSummary.value.groups) {
+      map[g.id] = g
+    }
+  }
+  return map
+})
+
+async function loadSummary(): Promise<void> {
+  if (!branchesStore.activeBranchId) {
+    branchSummary.value = null
+    return
+  }
+  isLoadingSummary.value = true
+  try {
+    const res = await fetchBranchSummary(branchesStore.activeBranchId)
+    branchSummary.value = res.data
+  } catch (err) {
+    console.warn('No se pudo cargar el resumen de sucursal', err)
+    branchSummary.value = null
+  } finally {
+    isLoadingSummary.value = false
+  }
+}
+
+function refreshAll(): void {
+  groupsQuery.refresh()
+  loadSummary()
+}
+
+function getGroupCollectionPct(id: string | number): number {
+  const g = groupsSummaryMap.value[Number(id)]
+  if (!g) return 0
+  return Math.min(100, Math.max(0, g.collection_percentage || 0))
+}
 
 // Helper para parsear nombres en formato JSON multilingüe
 function formatLocalized(name: unknown): string {
@@ -52,6 +97,7 @@ const groupHeaders = [
   { title: 'Nombre', key: 'name', align: 'start' as const, sortable: true },
   { title: 'Monto', key: 'amount', align: 'end' as const, sortable: true, width: '130px' },
   { title: 'Cuotas', key: 'installments', align: 'center' as const, sortable: false, width: '170px' },
+  { title: 'Cobranza', key: 'collection', align: 'center' as const, sortable: false, width: '130px' },
   { title: 'Participantes', key: 'participants', align: 'center' as const, sortable: false, width: '140px' },
   { title: 'Estado', key: 'status', align: 'center' as const, sortable: true, width: '130px' },
   { title: 'Acciones', key: 'actions', align: 'end' as const, sortable: false, width: '80px' }
@@ -304,6 +350,7 @@ watch(
   (newBranchId) => {
     if (newBranchId) {
       groupsQuery.refresh()
+      loadSummary()
     }
   }
 )
@@ -312,6 +359,7 @@ onMounted(async () => {
   await financingStore.loadCatalogs()
   if (branchesStore.activeBranchId) {
     await financingStore.loadSamGroups(branchesStore.activeBranchId)
+    await loadSummary()
   }
 })
 </script>
@@ -354,9 +402,121 @@ onMounted(async () => {
     </div>
 
     <!-- ═══════════════════════════════════════════════════════════ -->
+    <!-- SECCIÓN INTERMEDIA: 4 TARJETAS EJECUTIVAS DE KPI             -->
+    <!-- ═══════════════════════════════════════════════════════════ -->
+    <v-row density="compact" class="mb-6" data-testid="kpi-summary-cards">
+      <!-- 1. Recaudado vs Comprometido -->
+      <v-col cols="12" sm="6" md="3">
+        <v-card elevation="0" rounded="lg" class="border bg-white pa-4 h-100 d-flex flex-column justify-space-between" data-testid="kpi-collected-card">
+          <div>
+            <div class="d-flex align-center justify-space-between mb-1">
+              <span class="text-caption font-weight-bold text-medium-emphasis text-uppercase" style="letter-spacing: 0.05em;">Cobranza Total</span>
+              <v-icon size="18" color="primary">mdi-cash-multiple</v-icon>
+            </div>
+            <div class="text-h6 font-weight-bold text-high-emphasis" data-testid="kpi-collected-amount">
+              {{ branchSummary ? money(branchSummary.financial.total_collected) : '—' }}
+            </div>
+            <div class="text-caption text-medium-emphasis mb-2">
+              de {{ branchSummary ? money(branchSummary.financial.total_committed) : '—' }}
+            </div>
+          </div>
+          <div>
+            <div class="d-flex justify-space-between text-caption font-weight-medium mb-1">
+              <span>Recaudación</span>
+              <span class="font-weight-bold text-primary">{{ branchSummary ? Math.min(100, Math.max(0, branchSummary.financial.collection_percentage)) : 0 }}%</span>
+            </div>
+            <v-progress-linear
+              :model-value="branchSummary ? Math.min(100, Math.max(0, branchSummary.financial.collection_percentage)) : 0"
+              color="primary"
+              height="6"
+              rounded
+            />
+          </div>
+        </v-card>
+      </v-col>
+
+      <!-- 2. Cartera en Mora -->
+      <v-col cols="12" sm="6" md="3">
+        <v-card
+          elevation="0"
+          rounded="lg"
+          class="border bg-white pa-4 h-100 d-flex flex-column justify-space-between cursor-pointer"
+          data-testid="kpi-overdue-card"
+          @click="router.push('/financing/defaulters')"
+        >
+          <div>
+            <div class="d-flex align-center justify-space-between mb-1">
+              <span class="text-caption font-weight-bold text-error text-uppercase" style="letter-spacing: 0.05em;">Cartera en Mora</span>
+              <v-icon size="18" color="error">mdi-alert-circle</v-icon>
+            </div>
+            <div class="text-h6 font-weight-bold text-error" data-testid="kpi-overdue-amount">
+              {{ branchSummary ? money(branchSummary.financial.total_overdue) : '—' }}
+            </div>
+            <div class="text-caption text-medium-emphasis">
+              {{ branchSummary ? branchSummary.operational.participants_overdue : 0 }} clientes con cuotas vencidas
+            </div>
+          </div>
+          <div class="d-flex align-center justify-space-between text-caption text-error font-weight-medium mt-2 pt-1 border-t">
+            <span>Ver detalle morosos</span>
+            <v-icon size="14">mdi-arrow-right</v-icon>
+          </div>
+        </v-card>
+      </v-col>
+
+      <!-- 3. Capacidad del Programa -->
+      <v-col cols="12" sm="6" md="3">
+        <v-card elevation="0" rounded="lg" class="border bg-white pa-4 h-100 d-flex flex-column justify-space-between" data-testid="kpi-capacity-card">
+          <div>
+            <div class="d-flex align-center justify-space-between mb-1">
+              <span class="text-caption font-weight-bold text-medium-emphasis text-uppercase" style="letter-spacing: 0.05em;">Suscriptores</span>
+              <v-icon size="18" color="info">mdi-account-group</v-icon>
+            </div>
+            <div class="text-h6 font-weight-bold text-high-emphasis" data-testid="kpi-participants-count">
+              {{ branchSummary ? branchSummary.operational.participants_total : 0 }} / {{ branchSummary ? branchSummary.operational.participants_max : 0 }}
+            </div>
+            <div class="text-caption text-medium-emphasis">
+              {{ branchSummary ? branchSummary.operational.participants_up_to_date : 0 }} al día &bull; {{ branchSummary ? branchSummary.operational.groups_active : 0 }} activos
+            </div>
+          </div>
+          <div class="text-caption text-medium-emphasis mt-2 pt-1 border-t">
+            Total {{ branchSummary ? branchSummary.operational.groups_total : 0 }} grupos formados
+          </div>
+        </v-card>
+      </v-col>
+
+      <!-- 4. Vehículos Adjudicados -->
+      <v-col cols="12" sm="6" md="3">
+        <v-card
+          elevation="0"
+          rounded="lg"
+          class="border bg-white pa-4 h-100 d-flex flex-column justify-space-between cursor-pointer"
+          data-testid="kpi-awarded-card"
+          @click="router.push('/financing/awarded')"
+        >
+          <div>
+            <div class="d-flex align-center justify-space-between mb-1">
+              <span class="text-caption font-weight-bold text-medium-emphasis text-uppercase" style="letter-spacing: 0.05em;">Vehículos Entregados</span>
+              <v-icon size="18" color="secondary">mdi-car-key</v-icon>
+            </div>
+            <div class="text-h6 font-weight-bold text-high-emphasis" data-testid="kpi-awarded-count">
+              {{ branchSummary ? branchSummary.operational.awarded_total : 0 }}
+            </div>
+            <div class="text-caption text-medium-emphasis">
+              {{ branchSummary ? branchSummary.operational.pending_award_total : 0 }} adjudicaciones pendientes
+            </div>
+          </div>
+          <div class="d-flex align-center justify-space-between text-caption text-secondary font-weight-medium mt-2 pt-1 border-t">
+            <span>Ver padrón entregas</span>
+            <v-icon size="14">mdi-arrow-right</v-icon>
+          </div>
+        </v-card>
+      </v-col>
+    </v-row>
+
+    <!-- ═══════════════════════════════════════════════════════════ -->
     <!-- SEGUNDA SECCIÓN: BARRA DE BÚSQUEDA (SECCIÓN SOLA, 7 COLS)   -->
     <!-- ═══════════════════════════════════════════════════════════ -->
-    <v-row dense class="mb-3">
+    <v-row density="compact" class="mb-3">
       <v-col cols="12" md="7">
         <v-text-field
           v-model="groupsQuery.search.value"
@@ -405,9 +565,9 @@ onMounted(async () => {
             color="white"
             size="small"
             class="border rounded-circle flex-shrink-0"
-            :loading="groupsQuery.isLoading.value"
+            :loading="groupsQuery.isLoading.value || isLoadingSummary"
             data-testid="btn-refresh-groups"
-            @click="groupsQuery.refresh()"
+            @click="refreshAll"
           />
         </template>
       </v-tooltip>
@@ -424,7 +584,8 @@ onMounted(async () => {
         :headers="groupHeaders"
         :items="groupsQuery.items.value"
         :items-length="groupsQuery.totalItems.value"
-        :loading="groupsQuery.isLoading.value"
+        :loading="groupsQuery.isLoading.value || isLoadingSummary"
+        :mobile="smAndDown"
         no-data-text="No hay datos disponibles"
         loading-text="Cargando grupos..."
         density="comfortable"
@@ -460,6 +621,22 @@ onMounted(async () => {
             <span class="text-body-2 text-medium-emphasis">
               ${{ Number(item.installment_amount || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) }}
             </span>
+          </div>
+        </template>
+
+        <!-- Columna: Cobranza -->
+        <template #[`item.collection`]="{ item }">
+          <div class="d-flex flex-column align-center ga-1 mx-auto" style="min-width: 90px; max-width: 110px;">
+            <div class="text-caption font-weight-bold text-high-emphasis">
+              {{ getGroupCollectionPct(item.id) }}%
+            </div>
+            <v-progress-linear
+              :model-value="getGroupCollectionPct(item.id)"
+              :color="getGroupCollectionPct(item.id) >= 70 ? 'success' : 'primary'"
+              height="5"
+              rounded
+              class="w-100"
+            />
           </div>
         </template>
 

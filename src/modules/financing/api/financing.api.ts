@@ -16,7 +16,12 @@ import type {
   ContractDetailData,
   SignContractPayload,
   ReceivableItem,
-  GenerateReceivablesSummary
+  GenerateReceivablesSummary,
+  BranchSummaryReport,
+  DefaulterItem,
+  CollectionCalendarReport,
+  AwardedBenefitItem,
+  ParticipantStatement
 } from '../types'
 
 // ---------------------------------------------------------------------
@@ -273,3 +278,79 @@ export async function fetchReceivables(
   )
   return response.data
 }
+
+// ---------------------------------------------------------------------
+// 6. Reportes Analíticos de Financiamiento
+// ---------------------------------------------------------------------
+
+export async function fetchBranchSummary(
+  branchId: string | number
+): Promise<ApiResponse<BranchSummaryReport>> {
+  const response = await apiClient.get<ApiResponse<BranchSummaryReport>>(
+    ENDPOINTS.FINANCING.REPORTS_SUMMARY(branchId)
+  )
+  return response.data
+}
+
+export async function fetchDefaulters(
+  branchId: string | number,
+  groupId?: string | number | null
+): Promise<ApiResponse<DefaulterItem[]>> {
+  const params: Record<string, any> = {}
+  if (groupId) params.group_id = groupId
+  const response = await apiClient.get<ApiResponse<DefaulterItem[]>>(
+    ENDPOINTS.FINANCING.REPORTS_DEFAULTERS(branchId),
+    { params }
+  )
+  return response.data
+}
+export const fetchBranchDefaulters = fetchDefaulters
+
+export async function fetchCollectionCalendar(
+  branchId: string | number,
+  startDate?: string,
+  endDate?: string,
+  groupId?: string | number | null
+): Promise<ApiResponse<CollectionCalendarReport>> {
+  const params: Record<string, any> = {}
+  if (startDate) params.start_date = startDate
+  if (endDate) params.end_date = endDate
+  if (groupId) params.group_id = groupId
+  const response = await apiClient.get<ApiResponse<CollectionCalendarReport>>(
+    ENDPOINTS.FINANCING.REPORTS_CALENDAR(branchId),
+    { params }
+  )
+  return response.data
+}
+
+export async function fetchAwardedBenefits(
+  branchId: string | number,
+  groupId?: string | number | null
+): Promise<ApiResponse<AwardedBenefitItem[]>> {
+  const params: Record<string, any> = {}
+  if (groupId) params.group_id = groupId
+  const response = await apiClient.get<ApiResponse<AwardedBenefitItem[]>>(
+    ENDPOINTS.FINANCING.REPORTS_AWARDED(branchId),
+    { params }
+  )
+  return response.data
+}
+
+export async function fetchParticipantStatement(
+  branchId: string | number,
+  participantId: string | number,
+  groupId?: string | number | null
+): Promise<ApiResponse<ParticipantStatement>> {
+  if (groupId) {
+    const response = await apiClient.get<ApiResponse<ParticipantStatement>>(
+      ENDPOINTS.FINANCING.PARTICIPANT_STATEMENT(branchId, groupId, participantId)
+    )
+    return response.data
+  }
+  const response = await apiClient.get<ApiResponse<ParticipantStatement>>(
+    ENDPOINTS.FINANCING.REPORTS_PARTICIPANT_STATEMENT(branchId),
+    { params: { participant_id: participantId } }
+  )
+  return response.data
+}
+

@@ -5,10 +5,12 @@ import { useDisplay } from 'vuetify'
 import { useAuthStore } from '@/modules/auth/stores/auth.store'
 import { useMyStore } from '@/modules/my/stores/my.store'
 import { useBranchesStore } from '@/modules/branches/stores/branches.store'
+import { useAccountingStore } from '@/modules/accounting/stores/accounting.store'
 
 const authStore = useAuthStore()
 const myStore = useMyStore()
 const branchesStore = useBranchesStore()
+const accountingStore = useAccountingStore()
 const router = useRouter()
 const route = useRoute()
 const { mobile, mdAndUp } = useDisplay()
@@ -30,7 +32,8 @@ onMounted(async () => {
   if (authStore.isAuthenticated) {
     await Promise.all([
       myStore.loadUnreadCount(),
-      branchesStore.loadBranches()
+      branchesStore.loadBranches(),
+      accountingStore.loadCurrentExchangeRate(2)
     ])
   }
 })
@@ -81,11 +84,56 @@ async function handleSyncAccess(): Promise<void> {
   }
 }
 
-const navItems = [
+interface NavSubItem {
+  to: string
+  icon: string
+  title: string
+  testId?: string
+}
+
+interface NavItem {
+  to?: string
+  icon: string
+  title: string
+  testId?: string
+  children?: NavSubItem[]
+}
+
+const navItems: NavItem[] = [
   { to: '/', icon: 'mdi-view-dashboard-outline', title: 'Inicio', testId: 'nav-home' },
-  { to: '/financing/groups', icon: 'mdi-handshake-outline', title: 'Autofinanciamiento Colectivo', testId: 'nav-financing' },
-  { to: '/accounting', icon: 'mdi-cash-register', title: 'Cobranzas', testId: 'nav-accounting' }
+  {
+    title: 'Directorios',
+    icon: 'mdi-folder-account-outline',
+    testId: 'nav-directories',
+    children: [
+      { to: '/directories/persons', icon: 'mdi-account-group-outline', title: 'Personas', testId: 'nav-directories-persons' }
+    ]
+  },
+  {
+    title: 'Autofinanciamiento Colectivo',
+    icon: 'mdi-handshake-outline',
+    testId: 'nav-financing',
+    children: [
+      { to: '/financing/groups', icon: 'mdi-account-group-outline', title: 'Grupos SAM', testId: 'nav-financing-groups' },
+      { to: '/financing/defaulters', icon: 'mdi-alert-circle-outline', title: 'Cartera de Morosos', testId: 'nav-financing-defaulters' },
+      { to: '/financing/calendar', icon: 'mdi-calendar-clock-outline', title: 'Calendario de Cobros', testId: 'nav-financing-calendar' },
+      { to: '/financing/awarded', icon: 'mdi-car-key', title: 'Vehículos Adjudicados', testId: 'nav-financing-awarded' }
+    ]
+  },
+  {
+    title: 'Cobranzas y Caja',
+    icon: 'mdi-cash-register',
+    testId: 'nav-accounting',
+    children: [
+      { to: '/accounting/receivables', icon: 'mdi-cash-clock', title: 'Cuentas por Cobrar', testId: 'nav-accounting-receivables' },
+      { to: '/accounting/receipts', icon: 'mdi-receipt-text-outline', title: 'Recibos de Pago', testId: 'nav-accounting-receipts' },
+      { to: '/accounting/treasury', icon: 'mdi-bank-outline', title: 'Tesorería y Bancos', testId: 'nav-accounting-treasury' },
+      { to: '/accounting/exchange-rates', icon: 'mdi-currency-usd', title: 'Tasas de Cambio', testId: 'nav-accounting-rates' }
+    ]
+  }
 ]
+
+const openedNavGroups = ref<string[]>(['Directorios', 'Autofinanciamiento Colectivo', 'Cobranzas y Caja'])
 </script>
 
 <template>
@@ -129,22 +177,54 @@ const navItems = [
           </div>
         </div>
 
-        <!-- 2. Lista de Módulos (Directa sin encabezado de grupo) -->
+        <!-- 2. Lista de Módulos -->
         <div class="flex-grow-1 overflow-y-auto px-2 py-3 sidebar-scroll">
-          <v-list density="compact" nav class="pa-0 bg-transparent">
-            <v-list-item
-              v-for="item in navItems"
-              :key="item.to"
-              :to="item.to"
-              :prepend-icon="item.icon"
-              :title="item.title"
-              :data-testid="item.testId"
-              rounded="lg"
-              class="mb-1 nav-item-btn text-white"
-              :active="item.to === '/' ? route.path === '/' : route.path.startsWith(item.to)"
-              color="secondary"
-              @click="handleNavClick"
-            />
+          <v-list density="compact" nav class="pa-0 bg-transparent" v-model:opened="openedNavGroups">
+            <template v-for="item in navItems" :key="item.title">
+              <!-- Menú con sub-opciones -->
+              <v-list-group v-if="item.children" :value="item.title">
+                <template #activator="{ props: activatorProps }">
+                  <v-list-item
+                    v-bind="activatorProps"
+                    :prepend-icon="item.icon"
+                    :title="item.title"
+                    :data-testid="item.testId"
+                    rounded="lg"
+                    class="mb-1 nav-item-btn text-white"
+                    :class="{ 'text-secondary': item.children.some((c) => route.path.startsWith(c.to)) }"
+                    color="secondary"
+                  />
+                </template>
+
+                <v-list-item
+                  v-for="sub in item.children"
+                  :key="sub.to"
+                  :to="sub.to"
+                  :prepend-icon="sub.icon"
+                  :title="sub.title"
+                  :data-testid="sub.testId"
+                  rounded="lg"
+                  class="mb-1 nav-item-btn nav-sub-item-btn text-white"
+                  :active="route.path.startsWith(sub.to)"
+                  color="secondary"
+                  @click="handleNavClick"
+                />
+              </v-list-group>
+
+              <!-- Enlace directo -->
+              <v-list-item
+                v-else
+                :to="item.to"
+                :prepend-icon="item.icon"
+                :title="item.title"
+                :data-testid="item.testId"
+                rounded="lg"
+                class="mb-1 nav-item-btn text-white"
+                :active="item.to === '/' ? route.path === '/' : route.path.startsWith(item.to!)"
+                color="secondary"
+                @click="handleNavClick"
+              />
+            </template>
           </v-list>
         </div>
 
@@ -264,6 +344,32 @@ const navItems = [
             </v-card>
           </div>
         </v-menu>
+      </div>
+
+      <!-- Indicador Global de Tasa de Cambio Activa -->
+      <div class="d-none d-sm-flex align-center ml-2">
+        <v-btn
+          variant="tonal"
+          size="small"
+          rounded="pill"
+          class="text-none px-3 border"
+          :color="accountingStore.currentRates['2'] ? 'primary' : 'warning'"
+          to="/accounting/exchange-rates"
+          data-testid="topbar-exchange-rate"
+          title="Ver o actualizar tasas de cambio"
+        >
+          <v-icon
+            :icon="accountingStore.currentRates['2'] ? 'mdi-currency-usd' : 'mdi-alert-circle-outline'"
+            size="small"
+            class="mr-1"
+          />
+          <span v-if="accountingStore.currentRates['2']" class="font-weight-medium">
+            Tasa: <strong class="ml-1">Bs. {{ Number(accountingStore.currentRates['2'].value).toFixed(2) }}</strong>
+          </span>
+          <span v-else class="font-weight-medium">
+            Actualizar Tasa
+          </span>
+        </v-btn>
       </div>
 
       <v-spacer class="d-none d-md-flex" />
@@ -548,6 +654,11 @@ const navItems = [
 
 .nav-item-btn:hover {
   background-color: rgba(255, 255, 255, 0.08);
+}
+
+.nav-sub-item-btn {
+  font-size: 0.82rem;
+  padding-left: 28px !important;
 }
 
 .sidebar-scroll {

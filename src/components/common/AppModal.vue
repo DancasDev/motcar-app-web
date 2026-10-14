@@ -22,6 +22,7 @@ interface Props {
   submitVariant?: 'flat' | 'text' | 'elevated' | 'tonal' | 'outlined'
   submitIcon?: string
   submitDisabled?: boolean
+  submitTestId?: string
   formId?: string
 }
 
@@ -45,6 +46,7 @@ const props = withDefaults(defineProps<Props>(), {
   submitVariant: 'flat',
   submitIcon: '',
   submitDisabled: false,
+  submitTestId: 'modal-submit-btn',
   formId: undefined
 })
 
@@ -137,7 +139,7 @@ function handleSubmit(): void {
               :form="formId"
               :type="formId ? 'submit' : 'button'"
               class="text-none font-weight-bold px-5"
-              data-testid="modal-submit-btn"
+              :data-testid="submitTestId"
               @click="!formId && handleSubmit()"
             >
               {{ submitText }}

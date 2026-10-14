@@ -10,20 +10,17 @@ import {
   updateParticipant as apiUpdateParticipant,
   deleteParticipant as apiDeleteParticipant,
   fetchSamGroupById,
-  fetchQualifiedParticipants,
-  fetchReceivables,
   emitContract
 } from '../api/financing.api'
 import type {
   SamGroupItem,
-  ParticipantItem,
-  ReceivableItem,
-  QualifiedParticipantItem
+  ParticipantItem
 } from '../types'
 import type { DqbFilterTuple } from '@/types/query'
 import AppPaginatedSelect, { type PaginatedQueryParams } from '@/components/common/AppPaginatedSelect.vue'
 import { fetchPersons, fetchPersonById } from '@/modules/catalogs/api/catalogs.api'
 import type { PersonItem } from '@/modules/catalogs/types'
+import StatementModal from '../components/StatementModal.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -66,7 +63,7 @@ const participantsQuery = useDataQuery<ParticipantItem>(
 const participantHeaders = [
   { title: 'Turno', key: 'position', align: 'center' as const, sortable: true, width: '100px' },
   { title: 'Cliente Suscriptor', key: 'client', align: 'start' as const, sortable: false },
-  { title: 'Asesor', key: 'advisor', align: 'start' as const, sortable: false, width: '180px' },
+  { title: 'Referente', key: 'referrer', align: 'start' as const, sortable: false, width: '180px' },
   { title: 'Estado', key: 'status', align: 'center' as const, sortable: true, width: '120px' },
   { title: 'Morosidad', key: 'is_overdue', align: 'center' as const, sortable: true, width: '110px' },
   { title: 'Adjudicación', key: 'awarded_at', align: 'center' as const, sortable: true, width: '140px' },
@@ -155,7 +152,7 @@ async function fetchPersonSingle(id: any): Promise<any> {
 
 const participantFormData = ref<{
   client_id: number | null
-  advisor_id: number | null
+  referrer_id: number | null
   position: number | null
   status: string
   vehicle_brand: string
@@ -168,7 +165,7 @@ const participantFormData = ref<{
   is_disabled: boolean
 }>({
   client_id: null,
-  advisor_id: null,
+  referrer_id: null,
   position: null,
   status: '1',
   vehicle_brand: '',
@@ -185,7 +182,7 @@ function openCreateParticipantDialog(): void {
   editingParticipantId.value = null
   participantFormData.value = {
     client_id: null,
-    advisor_id: null,
+    referrer_id: null,
     position: null,
     status: '1',
     vehicle_brand: '',
@@ -215,7 +212,7 @@ function openEditParticipantDialog(participant: ParticipantItem): void {
 
   participantFormData.value = {
     client_id: Number(participant.client_id),
-    advisor_id: participant.advisor_id ? Number(participant.advisor_id) : null,
+    referrer_id: participant.referrer_id ? Number(participant.referrer_id) : null,
     position: participant.position ? Number(participant.position) : null,
     status: String(participant.status ?? '1'),
     vehicle_brand: metadata.brand || '',
@@ -324,7 +321,7 @@ async function handleSaveParticipant(): Promise<void> {
         groupId.value,
         editingParticipantId.value,
         {
-          advisor_id: participantFormData.value.advisor_id ? Number(participantFormData.value.advisor_id) : undefined,
+          referrer_id: participantFormData.value.referrer_id ? Number(participantFormData.value.referrer_id) : undefined,
           position: participantFormData.value.position ? Number(participantFormData.value.position) : undefined,
           status: participantFormData.value.status,
           benefit_metadata: metadata,
@@ -338,7 +335,7 @@ async function handleSaveParticipant(): Promise<void> {
         groupId.value,
         {
           client_id: Number(participantFormData.value.client_id),
-          advisor_id: participantFormData.value.advisor_id ? Number(participantFormData.value.advisor_id) : undefined,
+          referrer_id: participantFormData.value.referrer_id ? Number(participantFormData.value.referrer_id) : undefined,
           position: participantFormData.value.position ? Number(participantFormData.value.position) : undefined,
           status: participantFormData.value.status,
           benefit_metadata: metadata,
@@ -390,101 +387,14 @@ async function handleGenerateGroupReceivables(): Promise<void> {
 }
 
 // ---------------------------------------------------------------------
-// 4. Diálogo de Calificados para Adjudicación
+// 4. Diálogo de Estado de Cuenta / Cartola por Participante
 // ---------------------------------------------------------------------
-const qualifiedDialogOpen = ref(false)
-const isLoadingQualified = ref(false)
-const qualifiedList = ref<QualifiedParticipantItem[]>([])
-
-async function openQualifiedDialog(): Promise<void> {
-  if (!branchesStore.activeBranchId || !groupId.value) return
-  qualifiedDialogOpen.value = true
-  isLoadingQualified.value = true
-  try {
-    const res = await fetchQualifiedParticipants(branchesStore.activeBranchId, groupId.value)
-    qualifiedList.value = res.data || []
-  } catch (err: unknown) {
-    console.error('Error al cargar calificados:', err)
-    qualifiedList.value = []
-  } finally {
-    isLoadingQualified.value = false
-  }
-}
-
-// ---------------------------------------------------------------------
-// 5. Diálogo de Cronograma de Cuotas por Participante
-// ---------------------------------------------------------------------
-const quotesDialogOpen = ref(false)
+const statementDialogOpen = ref(false)
 const selectedParticipant = ref<ParticipantItem | null>(null)
-const participantQuotes = ref<ReceivableItem[]>([])
-const isLoadingQuotes = ref(false)
 
-const quoteHeaders = [
-  { title: 'ID', key: 'id', align: 'start' as const, width: '70px' },
-  { title: 'Concepto / Glosa', key: 'concept_name', align: 'start' as const },
-  { title: 'Vencimiento', key: 'due_date', align: 'center' as const, width: '130px' },
-  { title: 'Monto Total', key: 'total_amount', align: 'end' as const, width: '120px' },
-  { title: 'Monto Cobrado', key: 'paid_amount', align: 'end' as const, width: '120px' },
-  { title: 'Saldo Deudor', key: 'balance_amount', align: 'end' as const, width: '120px' },
-  { title: 'Estado', key: 'status', align: 'center' as const, width: '120px' }
-]
-
-const quotesSummary = computed(() => {
-  const total = participantQuotes.value.reduce((acc, q) => acc + Number(q.total_amount || 0), 0)
-  const paid = participantQuotes.value.reduce((acc, q) => acc + Number(q.paid_amount || 0), 0)
-  const balance = participantQuotes.value.reduce((acc, q) => acc + Number(q.balance_amount || 0), 0)
-  return { total, paid, balance }
-})
-
-async function openQuotesDialog(participant: ParticipantItem): Promise<void> {
+function openQuotesDialog(participant: ParticipantItem): void {
   selectedParticipant.value = participant
-  quotesDialogOpen.value = true
-  await loadQuotesForParticipant(participant)
-}
-
-async function loadQuotesForParticipant(participant: ParticipantItem): Promise<void> {
-  if (!branchesStore.activeBranchId) return
-  isLoadingQuotes.value = true
-  try {
-    const res = await fetchReceivables(branchesStore.activeBranchId, {
-      itemsPerPage: 100,
-      filters: [
-        ['origin_type', 0, '=', 'AND'],
-        ['origin_id', participant.id, '=', 'AND']
-      ]
-    })
-    participantQuotes.value = res.data || []
-  } catch (err: unknown) {
-    console.error('Error al cargar cuotas:', err)
-    participantQuotes.value = []
-  } finally {
-    isLoadingQuotes.value = false
-  }
-}
-
-async function handleGenerateParticipantQuotes(): Promise<void> {
-  if (!branchesStore.activeBranchId || !selectedParticipant.value) return
-  isLoadingQuotes.value = true
-  try {
-    const res = await financingStore.generateParticipantReceivables(
-      branchesStore.activeBranchId,
-      groupId.value,
-      selectedParticipant.value.id
-    )
-    showMessage(`Cronograma de cuotas emitido. Cuotas generadas: ${res.generated || 0}`)
-    await loadQuotesForParticipant(selectedParticipant.value)
-    participantsQuery.refresh()
-  } catch (err: unknown) {
-    const errorObj = err as any
-    const msg =
-      errorObj?.response?.data?.message ||
-      errorObj?.response?.data?.messages?.error ||
-      errorObj?.response?.data?.error ||
-      (err instanceof Error ? err.message : 'Error al generar cuotas del participante.')
-    showMessage(msg, 'error')
-  } finally {
-    isLoadingQuotes.value = false
-  }
+  statementDialogOpen.value = true
 }
 
 // ---------------------------------------------------------------------
@@ -578,28 +488,11 @@ onMounted(() => {
           <h1 class="text-h5 font-weight-bold text-high-emphasis mb-0 leading-tight">
             {{ currentGroup?.name || `Grupo #${groupId}` }}
           </h1>
-          <p class="text-body-2 text-medium-emphasis mb-0 mt-0">
-            Monto: <strong>${{ Number(currentGroup?.amount || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) }}</strong> &bull;
-            Cuota: <strong>${{ Number(currentGroup?.installment_amount || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) }}</strong> &bull;
-            Cuotas: <strong>{{ currentGroup?.installment_count || 0 }}</strong> &bull;
-            Participantes: <strong>{{ participantsQuery.totalItems.value }} / {{ currentGroup?.participant_max || 24 }}</strong>
-          </p>
         </div>
       </div>
 
       <!-- Botones de Acción de Nivel de Grupo -->
       <div class="d-flex align-center ga-2 flex-wrap">
-        <v-btn
-          variant="outlined"
-          color="primary"
-          prepend-icon="mdi-trophy-outline"
-          class="text-none font-weight-bold"
-          data-testid="btn-view-qualified"
-          @click="openQualifiedDialog"
-        >
-          Ver Calificados
-        </v-btn>
-
         <v-btn
           variant="outlined"
           color="primary"
@@ -627,7 +520,7 @@ onMounted(() => {
     <!-- ═══════════════════════════════════════════════════════════ -->
     <!-- SEGUNDA SECCIÓN: BARRA DE BÚSQUEDA (SECCIÓN SOLA, 7 COLS)   -->
     <!-- ═══════════════════════════════════════════════════════════ -->
-    <v-row dense class="mb-3">
+    <v-row density="compact" class="mb-3">
       <v-col cols="12" md="7">
         <v-text-field
           v-model="participantsQuery.search.value"
@@ -726,9 +619,9 @@ onMounted(() => {
           </div>
         </template>
 
-        <template #[`item.advisor`]="{ item }">
-          <span v-if="item.advisor_first_name" class="text-body-2 text-high-emphasis font-weight-medium">
-            {{ item.advisor_first_name }} {{ item.advisor_last_name || '' }}
+        <template #[`item.referrer`]="{ item }">
+          <span v-if="item.referrer_first_name" class="text-body-2 text-high-emphasis font-weight-medium">
+            {{ item.referrer_first_name }} {{ item.referrer_last_name || '' }}
           </span>
           <span v-else class="text-caption text-medium-emphasis">Sin asignar</span>
         </template>
@@ -787,10 +680,10 @@ onMounted(() => {
                   @click="openParticipantDetails(item)"
                 />
 
-                <!-- 2. Cronograma de Cuotas -->
+                <!-- 2. Estado de Cuenta / Cartola -->
                 <v-list-item
-                  prepend-icon="mdi-calendar-clock"
-                  title="Cronograma de Cuotas"
+                  prepend-icon="mdi-file-document-outline"
+                  title="Estado de Cuenta / Cartola"
                   data-testid="menu-item-view-quotes"
                   @click="openQuotesDialog(item)"
                 />
@@ -844,7 +737,7 @@ onMounted(() => {
   >
     <v-form id="form-register-participant" @submit.prevent="handleSaveParticipant">
       <!-- 1. Cliente Suscriptor con AppPaginatedSelect -->
-      <v-row dense class="mb-1">
+      <v-row density="compact" class="mb-1">
         <v-col cols="12">
           <AppPaginatedSelect
             v-model="participantFormData.client_id"
@@ -861,20 +754,20 @@ onMounted(() => {
         </v-col>
       </v-row>
 
-      <!-- 2. Asesor de Ventas y Posición -->
-      <v-row dense class="mb-1">
+      <!-- 2. Contacto Referente ($15) y Posición -->
+      <v-row density="compact" class="mb-1">
         <v-col cols="12" sm="8">
           <AppPaginatedSelect
-            v-model="participantFormData.advisor_id"
+            v-model="participantFormData.referrer_id"
             :fetch-options="fetchPersonsOptions"
             :fetch-by-id="fetchPersonSingle"
-            label="Asesor de Ventas (Opcional)"
-            placeholder="Buscar asesor..."
+            label="Contacto Referente ($15) (Opcional)"
+            placeholder="Buscar persona referente..."
             value-key="id"
             label-key="name"
             clearable
             density="comfortable"
-            data-testid="select-participant-advisor"
+            data-testid="select-participant-referrer"
           />
         </v-col>
         <v-col cols="12" sm="4">
@@ -893,7 +786,7 @@ onMounted(() => {
       </v-row>
 
       <!-- 3. Estado Inicial y Marca -->
-      <v-row dense class="mb-1">
+      <v-row density="compact" class="mb-1">
         <v-col cols="12" sm="6">
           <v-select
             v-model="participantFormData.status"
@@ -923,7 +816,7 @@ onMounted(() => {
       </v-row>
 
       <!-- 4. Modelo y Año -->
-      <v-row dense class="mb-1">
+      <v-row density="compact" class="mb-1">
         <v-col cols="12" sm="8">
           <v-text-field
             v-model="participantFormData.vehicle_model"
@@ -950,7 +843,7 @@ onMounted(() => {
       </v-row>
 
       <!-- 5. Color y Serial de Chasis -->
-      <v-row dense class="mb-1">
+      <v-row density="compact" class="mb-1">
         <v-col cols="12" sm="6">
           <v-text-field
             v-model="participantFormData.color"
@@ -1019,7 +912,7 @@ onMounted(() => {
       </div>
 
       <!-- Métricas del Participante -->
-      <v-row dense>
+      <v-row density="compact">
         <v-col cols="6" sm="3">
           <div class="border rounded-lg pa-3 text-center">
             <div class="text-caption text-medium-emphasis">Turno Asignado</div>
@@ -1065,9 +958,9 @@ onMounted(() => {
               </td>
             </tr>
             <tr>
-              <td class="font-weight-medium text-medium-emphasis">Asesor Responsable</td>
+              <td class="font-weight-medium text-medium-emphasis">Contacto Referente</td>
               <td class="text-high-emphasis">
-                {{ selectedParticipantDetails.advisor_first_name ? `${selectedParticipantDetails.advisor_first_name} ${selectedParticipantDetails.advisor_last_name || ''}` : 'Sin asignar' }}
+                {{ selectedParticipantDetails.referrer_first_name ? `${selectedParticipantDetails.referrer_first_name} ${selectedParticipantDetails.referrer_last_name || ''}` : 'Sin asignar' }}
               </td>
             </tr>
             <tr>
@@ -1146,152 +1039,12 @@ onMounted(() => {
     </div>
   </AppModal>
 
-  <!-- Modal: Cronograma de Cuotas (Amortización) -->
-  <AppModal
-    v-model="quotesDialogOpen"
-    :title="`Cronograma de Cuotas - ${selectedParticipant?.client_first_name || 'Suscriptor'} (Turno #${selectedParticipant?.position || ''})`"
-    subtitle="Listado oficial de cuentas por cobrar originadas para el participante"
-    max-width="850"
-    cancel-text="Cerrar"
-    hide-submit
-  >
-    <!-- Tarjetas de Resumen Financiero -->
-    <v-row dense class="mb-3">
-      <v-col cols="12" sm="4">
-        <div class="border rounded-lg pa-3 bg-surface-variant text-center">
-          <div class="text-caption text-medium-emphasis">Total Cronograma</div>
-          <div class="text-h6 font-weight-bold text-high-emphasis mt-0.5">
-            ${{ quotesSummary.total.toLocaleString('en-US', { minimumFractionDigits: 2 }) }}
-          </div>
-        </div>
-      </v-col>
-      <v-col cols="12" sm="4">
-        <div class="border rounded-lg pa-3 bg-surface-variant text-center">
-          <div class="text-caption text-medium-emphasis">Total Cobrado</div>
-          <div class="text-h6 font-weight-bold text-success mt-0.5">
-            ${{ quotesSummary.paid.toLocaleString('en-US', { minimumFractionDigits: 2 }) }}
-          </div>
-        </div>
-      </v-col>
-      <v-col cols="12" sm="4">
-        <div class="border rounded-lg pa-3 bg-surface-variant text-center">
-          <div class="text-caption text-medium-emphasis">Saldo Pendiente</div>
-          <div class="text-h6 font-weight-bold text-error mt-0.5">
-            ${{ quotesSummary.balance.toLocaleString('en-US', { minimumFractionDigits: 2 }) }}
-          </div>
-        </div>
-      </v-col>
-    </v-row>
-
-    <div class="d-flex align-center justify-end mb-3">
-      <v-btn
-        color="primary"
-        variant="tonal"
-        size="small"
-        prepend-icon="mdi-calculator"
-        class="text-none font-weight-medium"
-        :loading="isLoadingQuotes"
-        data-testid="btn-generate-quotes"
-        @click="handleGenerateParticipantQuotes"
-      >
-        Generar Cronograma de Cuotas
-      </v-btn>
-    </div>
-
-    <v-data-table
-      :headers="quoteHeaders"
-      :items="participantQuotes"
-      :loading="isLoadingQuotes"
-      no-data-text="No hay cuotas generadas para este participante"
-      density="comfortable"
-      hover
-      class="border rounded-lg"
-      data-testid="quotes-table"
-    >
-      <template #[`item.concept_name`]="{ item }">
-        <span class="font-weight-medium text-body-2 text-high-emphasis">
-          {{ item.concept_name || item.description || 'Cuota Periódica' }}
-        </span>
-      </template>
-
-      <template #[`item.due_date`]="{ item }">
-        <span class="text-body-2 text-medium-emphasis">
-          {{ item.due_date ? item.due_date.substring(0, 10) : 'N/A' }}
-        </span>
-      </template>
-
-      <template #[`item.total_amount`]="{ item }">
-        <span class="font-weight-bold text-body-2 text-high-emphasis">
-          ${{ Number(item.total_amount || 0).toLocaleString('en-US', { minimumFractionDigits: 2 }) }}
-        </span>
-      </template>
-
-      <template #[`item.paid_amount`]="{ item }">
-        <span class="text-success font-weight-medium text-body-2">
-          ${{ Number(item.paid_amount || 0).toLocaleString('en-US', { minimumFractionDigits: 2 }) }}
-        </span>
-      </template>
-
-      <template #[`item.balance_amount`]="{ item }">
-        <span class="text-error font-weight-bold text-body-2">
-          ${{ Number(item.balance_amount || 0).toLocaleString('en-US', { minimumFractionDigits: 2 }) }}
-        </span>
-      </template>
-
-      <template #[`item.status`]="{ item }">
-        <v-chip
-          size="small"
-          :color="item.status === '1' ? 'success' : item.status === '2' ? 'error' : 'info'"
-          variant="tonal"
-          label
-          class="font-weight-medium"
-        >
-          {{ item.status === '1' ? 'Pagada' : item.status === '2' ? 'En Mora' : 'Pendiente' }}
-        </v-chip>
-      </template>
-    </v-data-table>
-  </AppModal>
-
-  <!-- Modal: Participantes Calificados para Adjudicación -->
-  <AppModal
-    v-model="qualifiedDialogOpen"
-    title="Participantes Calificados"
-    subtitle="Suscriptores que cumplen con los requisitos de solvencia para adjudicación"
-    max-width="640"
-    cancel-text="Cerrar"
-    hide-submit
-  >
-    <div v-if="isLoadingQualified" class="d-flex justify-center py-6">
-      <v-progress-circular indeterminate color="primary" />
-    </div>
-
-    <div v-else-if="qualifiedList.length === 0" class="text-center py-8 text-medium-emphasis text-body-2">
-      No hay participantes calificados en este momento (deben estar al día sin mora).
-    </div>
-
-    <div v-else class="border rounded-lg overflow-hidden">
-      <v-table density="comfortable">
-        <thead>
-          <tr>
-            <th class="text-center">Turno</th>
-            <th>Suscriptor</th>
-            <th>Identificación</th>
-            <th class="text-center">Estado</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr v-for="q in qualifiedList" :key="q.id">
-            <td class="font-weight-bold text-primary text-center">#{{ q.position }}</td>
-            <td class="font-weight-medium text-high-emphasis">{{ q.first_name }} {{ q.last_name || '' }}</td>
-            <td class="text-medium-emphasis">{{ q.identification_type ? `${q.identification_type}-${q.identification_value}` : 'N/A' }}</td>
-            <td class="text-center">
-              <v-chip size="x-small" color="success" variant="flat" class="font-weight-bold">Al Día</v-chip>
-            </td>
-          </tr>
-        </tbody>
-      </v-table>
-    </div>
-  </AppModal>
+  <!-- Modal: Estado de Cuenta / Cartola (Amortización y Recaudación) -->
+  <StatementModal
+    v-model="statementDialogOpen"
+    :participant-id="selectedParticipant?.id || null"
+    :group-id="groupId"
+  />
 
   <!-- Snackbar de Notificaciones -->
   <v-snackbar

@@ -92,7 +92,19 @@ export const ENDPOINTS = {
       groupId: string | number,
       participantId: string | number
     ) =>
-      `/v1/branches/${branchId}/financing/groups/${groupId}/participants/${participantId}/contract/pdf`
+      `/v1/branches/${branchId}/financing/groups/${groupId}/participants/${participantId}/contract/pdf`,
+    REPORTS_SUMMARY: (branchId: string | number) => `/v1/branches/${branchId}/financing/reports/summary`,
+    REPORTS_DEFAULTERS: (branchId: string | number) => `/v1/branches/${branchId}/financing/reports/defaulters`,
+    REPORTS_CALENDAR: (branchId: string | number) => `/v1/branches/${branchId}/financing/reports/collection-calendar`,
+    REPORTS_AWARDED: (branchId: string | number) => `/v1/branches/${branchId}/financing/reports/awarded-benefits`,
+    REPORTS_PARTICIPANT_STATEMENT: (branchId: string | number) =>
+      `/v1/branches/${branchId}/financing/reports/participant-statement`,
+    PARTICIPANT_STATEMENT: (
+      branchId: string | number,
+      groupId: string | number,
+      participantId: string | number
+    ) =>
+      `/v1/branches/${branchId}/financing/groups/${groupId}/participants/${participantId}/reports/statement`
   },
   ACCOUNTING: {
     // Maestros Globales

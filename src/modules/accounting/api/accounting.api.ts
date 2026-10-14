@@ -115,6 +115,18 @@ export async function createExchangeRate(
   return response.data
 }
 
+export async function updateExchangeRate(
+  currencyId: string | number,
+  rateId: string | number,
+  payload: { value: number; date?: string }
+): Promise<ApiResponse<void>> {
+  const response = await apiClient.put<ApiResponse<void>>(
+    ENDPOINTS.ACCOUNTING.EXCHANGE_RATE_BY_ID(currencyId, rateId),
+    payload
+  )
+  return response.data
+}
+
 // ---------------------------------------------------------------------
 // 2. Canales de Pago: Categorías y Cuentas Receptoras
 // ---------------------------------------------------------------------

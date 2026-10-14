@@ -55,6 +55,16 @@ export const routes: RouteRecordRaw[] = [
         meta: { title: 'Inicio - Motcar App', requiresAuth: true, showBranchSelector: true }
       },
       {
+        path: 'directories',
+        redirect: '/directories/persons'
+      },
+      {
+        path: 'directories/persons',
+        name: 'DirectoriesPersons',
+        component: () => import('@/modules/directories/views/PersonsView.vue'),
+        meta: { title: 'Directorios - Personas - Motcar App', requiresAuth: true, showBranchSelector: true }
+      },
+      {
         path: 'financing',
         redirect: '/financing/groups'
       },
@@ -71,10 +81,50 @@ export const routes: RouteRecordRaw[] = [
         meta: { title: 'Participantes del Grupo - Motcar App', requiresAuth: true, showBranchSelector: true }
       },
       {
+        path: 'financing/defaulters',
+        name: 'FinancingDefaulters',
+        component: () => import('@/modules/financing/views/DefaultersView.vue'),
+        meta: { title: 'Cartera de Morosos - Motcar App', requiresAuth: true, showBranchSelector: true }
+      },
+      {
+        path: 'financing/calendar',
+        name: 'FinancingCalendar',
+        component: () => import('@/modules/financing/views/CollectionCalendarView.vue'),
+        meta: { title: 'Calendario de Cobros - Motcar App', requiresAuth: true, showBranchSelector: true }
+      },
+      {
+        path: 'financing/awarded',
+        name: 'FinancingAwarded',
+        component: () => import('@/modules/financing/views/AwardedBenefitsView.vue'),
+        meta: { title: 'Vehículos Adjudicados - Motcar App', requiresAuth: true, showBranchSelector: true }
+      },
+      {
         path: 'accounting',
-        name: 'Accounting',
-        component: () => import('@/modules/accounting/views/AccountingView.vue'),
-        meta: { title: 'Cobranzas - Motcar App', requiresAuth: true, showBranchSelector: true }
+        redirect: '/accounting/receivables'
+      },
+      {
+        path: 'accounting/receivables',
+        name: 'AccountingReceivables',
+        component: () => import('@/modules/accounting/views/AccountsReceivableView.vue'),
+        meta: { title: 'Cuentas por Cobrar - Motcar App', requiresAuth: true, showBranchSelector: true }
+      },
+      {
+        path: 'accounting/receipts',
+        name: 'AccountingReceipts',
+        component: () => import('@/modules/accounting/views/ReceiptsView.vue'),
+        meta: { title: 'Recibos de Pago y Caja - Motcar App', requiresAuth: true, showBranchSelector: true }
+      },
+      {
+        path: 'accounting/treasury',
+        name: 'AccountingTreasury',
+        component: () => import('@/modules/accounting/views/TreasuryView.vue'),
+        meta: { title: 'Tesorería y Bancos - Motcar App', requiresAuth: true, showBranchSelector: true }
+      },
+      {
+        path: 'accounting/exchange-rates',
+        name: 'AccountingExchangeRates',
+        component: () => import('@/modules/accounting/views/ExchangeRatesView.vue'),
+        meta: { title: 'Tasas de Cambio - Motcar App', requiresAuth: true, showBranchSelector: true }
       }
     ]
   },

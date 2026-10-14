@@ -112,6 +112,36 @@ export async function fetchPersonById(
   return response.data.data
 }
 
+export async function createPerson(
+  payload: Partial<PersonItem>
+): Promise<PersonItem> {
+  const response = await apiClient.post<{ data: PersonItem }>(
+    ENDPOINTS.CATALOGS.PERSONS,
+    payload
+  )
+  return response.data.data
+}
+
+export async function updatePerson(
+  id: string | number,
+  payload: Partial<PersonItem>
+): Promise<PersonItem> {
+  const response = await apiClient.put<{ data: PersonItem }>(
+    ENDPOINTS.CATALOGS.PERSON_BY_ID(id),
+    payload
+  )
+  return response.data.data
+}
+
+export async function deletePerson(
+  id: string | number
+): Promise<{ success: boolean }> {
+  const response = await apiClient.delete<{ success: boolean }>(
+    ENDPOINTS.CATALOGS.PERSON_BY_ID(id)
+  )
+  return response.data
+}
+
 // Aliases para retrocompatibilidad
 export const getCountries = fetchCountries
 export const getCountryTimeZones = fetchCountryTimezones
@@ -120,4 +150,5 @@ export const getDocumentTypes = fetchDocumentTypes
 export const getLanguages = fetchLanguages
 export const getNotificationTypes = fetchNotificationTypes
 export const getPersons = fetchPersons
+
 
