@@ -254,7 +254,7 @@ function handleValueChange(fieldCode: string, value: any): void {
       </div>
 
       <!-- Contenedor de campos con Vuetify Row -->
-      <v-row dense>
+      <v-row density="compact">
         <v-col
           v-for="field in group.fields"
           :key="field.code"

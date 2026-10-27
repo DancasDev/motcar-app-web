@@ -3,6 +3,9 @@ import '@mdi/font/css/materialdesignicons.css'
 import { createVuetify } from 'vuetify'
 
 export const vuetify = createVuetify({
+  display: {
+    mobileBreakpoint: 'md'
+  },
   theme: {
     defaultTheme: 'motcarLight',
     themes: {

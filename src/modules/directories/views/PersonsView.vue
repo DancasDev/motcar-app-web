@@ -452,7 +452,7 @@ function showNotification(text: string, color: 'success' | 'error' | 'warning' =
     >
       <v-form id="form-person" @submit.prevent="handleSavePerson">
         <!-- 1. Identificación: Tipo y Número -->
-        <v-row dense class="mb-1">
+        <v-row density="compact" class="mb-1">
           <v-col cols="12" sm="5">
             <v-select
               v-model="formData.identification_type"
@@ -478,7 +478,7 @@ function showNotification(text: string, color: 'success' | 'error' | 'warning' =
         </v-row>
 
         <!-- 2. Nombres y Apellidos -->
-        <v-row dense class="mb-1">
+        <v-row density="compact" class="mb-1">
           <v-col cols="12" sm="6">
             <v-text-field
               v-model="formData.first_name"
@@ -502,7 +502,7 @@ function showNotification(text: string, color: 'success' | 'error' | 'warning' =
         </v-row>
 
         <!-- 3. Teléfonos -->
-        <v-row dense class="mb-1">
+        <v-row density="compact" class="mb-1">
           <v-col cols="12" sm="6">
             <v-text-field
               v-model="formData.phone_primary"
@@ -527,7 +527,7 @@ function showNotification(text: string, color: 'success' | 'error' | 'warning' =
         </v-row>
 
         <!-- 4. Ciudad y Dirección -->
-        <v-row dense class="mb-1">
+        <v-row density="compact" class="mb-1">
           <v-col cols="12" sm="6">
             <v-text-field
               v-model="formData.city"
@@ -555,7 +555,7 @@ function showNotification(text: string, color: 'success' | 'error' | 'warning' =
           </v-col>
         </v-row>
 
-        <v-row dense>
+        <v-row density="compact">
           <v-col cols="12">
             <v-textarea
               v-model="formData.address"

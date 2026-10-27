@@ -1,60 +1,22 @@
 <script setup lang="ts">
-import { ref, computed, watch, onMounted } from 'vue'
+import { ref, watch, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useDisplay } from 'vuetify'
 import { useBranchesStore } from '@/modules/branches/stores/branches.store'
 import { useFinancingStore } from '../stores/financing.store'
 import { useDataQuery } from '@/composables/useDataQuery'
-import { fetchSamGroups, fetchBranchSummary } from '../api/financing.api'
-import type { SamGroupItem, CreateSamGroupPayload, BranchSummaryReport, BranchSummaryGroupItem } from '../types'
+import AppPaginatedSelect, { type PaginatedQueryParams } from '@/components/common/AppPaginatedSelect.vue'
+import { fetchSamGroups, fetchPaymentFrequencies, fetchContractTypes } from '../api/financing.api'
+import type { SamGroupItem, CreateSamGroupPayload, PaymentFrequencyItem, ContractTypeItem } from '../types'
 import type { DqbFilterTuple } from '@/types/query'
-import { money } from '@/utils/format'
 
 const router = useRouter()
 const { smAndDown } = useDisplay()
 const branchesStore = useBranchesStore()
 const financingStore = useFinancingStore()
 
-// Resumen general de sucursal
-const branchSummary = ref<BranchSummaryReport | null>(null)
-const isLoadingSummary = ref(false)
-
-const groupsSummaryMap = computed<Record<number, BranchSummaryGroupItem>>(() => {
-  const map: Record<number, BranchSummaryGroupItem> = {}
-  if (branchSummary.value?.groups) {
-    for (const g of branchSummary.value.groups) {
-      map[g.id] = g
-    }
-  }
-  return map
-})
-
-async function loadSummary(): Promise<void> {
-  if (!branchesStore.activeBranchId) {
-    branchSummary.value = null
-    return
-  }
-  isLoadingSummary.value = true
-  try {
-    const res = await fetchBranchSummary(branchesStore.activeBranchId)
-    branchSummary.value = res.data
-  } catch (err) {
-    console.warn('No se pudo cargar el resumen de sucursal', err)
-    branchSummary.value = null
-  } finally {
-    isLoadingSummary.value = false
-  }
-}
-
 function refreshAll(): void {
   groupsQuery.refresh()
-  loadSummary()
-}
-
-function getGroupCollectionPct(id: string | number): number {
-  const g = groupsSummaryMap.value[Number(id)]
-  if (!g) return 0
-  return Math.min(100, Math.max(0, g.collection_percentage || 0))
 }
 
 // Helper para parsear nombres en formato JSON multilingüe
@@ -77,6 +39,121 @@ function formatLocalized(name: unknown): string {
   return String(name)
 }
 
+function getCollectionPct(item: SamGroupItem): number {
+  const committed = Number(item.total_committed || 0)
+  const collected = Number(item.total_collected || 0)
+  if (committed <= 0) return 0
+  return Math.min(100, Math.max(0, Math.round((collected / committed) * 10000) / 100))
+}
+
+function formatMoney(amount: number | string | undefined | null): string {
+  return Number(amount || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+}
+
+// Autocompletado paginado de Frecuencias de Pago
+async function fetchFrequenciesOptions(params: PaginatedQueryParams): Promise<{ items: any[]; total: number }> {
+  try {
+    const dqbFilters: any[] = []
+    if (params.search && params.search.trim()) {
+      const term = params.search.trim()
+      dqbFilters.push(['name', term, 'LIKE', 'AND', 'BOTH'])
+    }
+    const res = await fetchPaymentFrequencies({
+      page: params.page,
+      itemsPerPage: params.pageSize,
+      filters: dqbFilters.length > 0 ? JSON.stringify(dqbFilters) : undefined
+    })
+    const items = (res.data || []).map((f: PaymentFrequencyItem) => ({
+      ...f,
+      id: Number(f.id),
+      name: formatLocalized(f.name) || f.code
+    }))
+    return {
+      items,
+      total: res.count ?? items.length
+    }
+  } catch (err) {
+    console.error('Error al consultar frecuencias:', err)
+    return { items: [], total: 0 }
+  }
+}
+
+async function fetchFrequencySingle(id: any): Promise<any> {
+  if (!id) return null
+  const found = financingStore.frequencies.find((f: any) => String(f.id) === String(id))
+  if (found) {
+    return {
+      ...found,
+      id: Number(found.id),
+      name: formatLocalized(found.name) || found.code
+    }
+  }
+  try {
+    const res = await fetchPaymentFrequencies({ filters: JSON.stringify([['id', id]]) })
+    const item = res.data?.[0]
+    if (!item) return null
+    return {
+      ...item,
+      id: Number(item.id),
+      name: formatLocalized(item.name) || item.code
+    }
+  } catch {
+    return null
+  }
+}
+
+// Autocompletado paginado de Tipos de Contrato
+async function fetchContractTypesOptions(params: PaginatedQueryParams): Promise<{ items: any[]; total: number }> {
+  try {
+    const dqbFilters: any[] = []
+    if (params.search && params.search.trim()) {
+      const term = params.search.trim()
+      dqbFilters.push(['name', term, 'LIKE', 'AND', 'BOTH'])
+    }
+    const res = await fetchContractTypes({
+      page: params.page,
+      itemsPerPage: params.pageSize,
+      filters: dqbFilters.length > 0 ? JSON.stringify(dqbFilters) : undefined
+    })
+    const items = (res.data || []).map((c: ContractTypeItem) => ({
+      ...c,
+      id: Number(c.id),
+      name: c.name || c.code
+    }))
+    return {
+      items,
+      total: res.count ?? items.length
+    }
+  } catch (err) {
+    console.error('Error al consultar tipos de contrato:', err)
+    return { items: [], total: 0 }
+  }
+}
+
+async function fetchContractTypeSingle(id: any): Promise<any> {
+  if (!id) return null
+  const found = financingStore.contractTypes.find((c: any) => String(c.id) === String(id))
+  if (found) {
+    return {
+      ...found,
+      id: Number(found.id),
+      name: found.name || found.code
+    }
+  }
+  try {
+    const res = await fetchContractTypes({ filters: JSON.stringify([['id', id]]) })
+    const item = res.data?.[0]
+    if (!item) return null
+    return {
+      ...item,
+      id: Number(item.id),
+      name: item.name || item.code
+    }
+  } catch {
+    return null
+  }
+}
+
 // ---------------------------------------------------------------------
 // 1. Data Query de Grupos SAM
 // ---------------------------------------------------------------------
@@ -95,8 +172,6 @@ const groupsQuery = useDataQuery<SamGroupItem>(
 
 const groupHeaders = [
   { title: 'Nombre', key: 'name', align: 'start' as const, sortable: true },
-  { title: 'Monto', key: 'amount', align: 'end' as const, sortable: true, width: '130px' },
-  { title: 'Cuotas', key: 'installments', align: 'center' as const, sortable: false, width: '170px' },
   { title: 'Cobranza', key: 'collection', align: 'center' as const, sortable: false, width: '130px' },
   { title: 'Participantes', key: 'participants', align: 'center' as const, sortable: false, width: '140px' },
   { title: 'Estado', key: 'status', align: 'center' as const, sortable: true, width: '130px' },
@@ -139,7 +214,6 @@ const groupFormData = ref<{
   name: string
   frequency_id: number | string | null
   contract_type_id: number | string | null
-  amount: number | null
   installment_amount: number | null
   installment_count: number | null
   participant_max: number | null
@@ -150,7 +224,6 @@ const groupFormData = ref<{
   name: '',
   frequency_id: null,
   contract_type_id: null,
-  amount: null,
   installment_amount: null,
   installment_count: null,
   participant_max: null,
@@ -165,7 +238,6 @@ function openCreateGroupDialog(): void {
     name: '',
     frequency_id: null,
     contract_type_id: null,
-    amount: null,
     installment_amount: null,
     installment_count: null,
     participant_max: null,
@@ -180,9 +252,8 @@ function openEditGroupDialog(group: SamGroupItem): void {
   editingGroupId.value = group.id
   groupFormData.value = {
     name: group.name,
-    frequency_id: group.frequency_id,
-    contract_type_id: group.contract_type_id ?? null,
-    amount: Number(group.amount),
+    frequency_id: group.frequency_id ? Number(group.frequency_id) : null,
+    contract_type_id: group.contract_type_id ? Number(group.contract_type_id) : null,
     installment_amount: Number(group.installment_amount),
     installment_count: Number(group.installment_count),
     participant_max: group.participant_max ? Number(group.participant_max) : null,
@@ -233,10 +304,6 @@ async function handleSaveGroup(): Promise<void> {
     showMessage('Selecciona una frecuencia de pago.', 'error')
     return
   }
-  if (!groupFormData.value.amount || Number(groupFormData.value.amount) <= 0) {
-    showMessage('Ingresa un monto de adjudicación válido.', 'error')
-    return
-  }
   if (!groupFormData.value.installment_amount || Number(groupFormData.value.installment_amount) <= 0) {
     showMessage('Ingresa el monto de cuota.', 'error')
     return
@@ -262,7 +329,6 @@ async function handleSaveGroup(): Promise<void> {
         name: groupFormData.value.name.trim(),
         frequency_id: Number(groupFormData.value.frequency_id),
         contract_type_id: groupFormData.value.contract_type_id ? Number(groupFormData.value.contract_type_id) : null,
-        amount: Number(groupFormData.value.amount),
         installment_amount: Number(groupFormData.value.installment_amount),
         installment_count: Number(groupFormData.value.installment_count),
         participant_max: groupFormData.value.participant_max ? Number(groupFormData.value.participant_max) : undefined,
@@ -276,7 +342,6 @@ async function handleSaveGroup(): Promise<void> {
         name: groupFormData.value.name.trim(),
         frequency_id: Number(groupFormData.value.frequency_id),
         contract_type_id: groupFormData.value.contract_type_id ? Number(groupFormData.value.contract_type_id) : null,
-        amount: Number(groupFormData.value.amount),
         installment_amount: Number(groupFormData.value.installment_amount),
         installment_count: Number(groupFormData.value.installment_count),
         participant_max: groupFormData.value.participant_max ? Number(groupFormData.value.participant_max) : undefined,
@@ -304,22 +369,7 @@ async function handleSaveGroup(): Promise<void> {
   }
 }
 
-async function handleGenerateGroupReceivables(group: SamGroupItem): Promise<void> {
-  if (!branchesStore.activeBranchId) return
-  try {
-    const res = await financingStore.generateGroupReceivables(branchesStore.activeBranchId, group.id)
-    showMessage(`Cuotas generadas exitosamente. Total generadas: ${res.generated || 0}`)
-    groupsQuery.refresh()
-  } catch (err: unknown) {
-    const errorObj = err as any
-    const msg =
-      errorObj?.response?.data?.message ||
-      errorObj?.response?.data?.messages?.error ||
-      errorObj?.response?.data?.error ||
-      (err instanceof Error ? err.message : 'Error al generar cuotas del grupo.')
-    showMessage(msg, 'error')
-  }
-}
+
 
 function navigateToParticipants(groupId: string | number): void {
   router.push(`/financing/groups/${groupId}/participants`)
@@ -350,17 +400,12 @@ watch(
   (newBranchId) => {
     if (newBranchId) {
       groupsQuery.refresh()
-      loadSummary()
     }
   }
 )
 
 onMounted(async () => {
   await financingStore.loadCatalogs()
-  if (branchesStore.activeBranchId) {
-    await financingStore.loadSamGroups(branchesStore.activeBranchId)
-    await loadSummary()
-  }
 })
 </script>
 
@@ -400,118 +445,6 @@ onMounted(async () => {
         Nuevo Grupo
       </v-btn>
     </div>
-
-    <!-- ═══════════════════════════════════════════════════════════ -->
-    <!-- SECCIÓN INTERMEDIA: 4 TARJETAS EJECUTIVAS DE KPI             -->
-    <!-- ═══════════════════════════════════════════════════════════ -->
-    <v-row density="compact" class="mb-6" data-testid="kpi-summary-cards">
-      <!-- 1. Recaudado vs Comprometido -->
-      <v-col cols="12" sm="6" md="3">
-        <v-card elevation="0" rounded="lg" class="border bg-white pa-4 h-100 d-flex flex-column justify-space-between" data-testid="kpi-collected-card">
-          <div>
-            <div class="d-flex align-center justify-space-between mb-1">
-              <span class="text-caption font-weight-bold text-medium-emphasis text-uppercase" style="letter-spacing: 0.05em;">Cobranza Total</span>
-              <v-icon size="18" color="primary">mdi-cash-multiple</v-icon>
-            </div>
-            <div class="text-h6 font-weight-bold text-high-emphasis" data-testid="kpi-collected-amount">
-              {{ branchSummary ? money(branchSummary.financial.total_collected) : '—' }}
-            </div>
-            <div class="text-caption text-medium-emphasis mb-2">
-              de {{ branchSummary ? money(branchSummary.financial.total_committed) : '—' }}
-            </div>
-          </div>
-          <div>
-            <div class="d-flex justify-space-between text-caption font-weight-medium mb-1">
-              <span>Recaudación</span>
-              <span class="font-weight-bold text-primary">{{ branchSummary ? Math.min(100, Math.max(0, branchSummary.financial.collection_percentage)) : 0 }}%</span>
-            </div>
-            <v-progress-linear
-              :model-value="branchSummary ? Math.min(100, Math.max(0, branchSummary.financial.collection_percentage)) : 0"
-              color="primary"
-              height="6"
-              rounded
-            />
-          </div>
-        </v-card>
-      </v-col>
-
-      <!-- 2. Cartera en Mora -->
-      <v-col cols="12" sm="6" md="3">
-        <v-card
-          elevation="0"
-          rounded="lg"
-          class="border bg-white pa-4 h-100 d-flex flex-column justify-space-between cursor-pointer"
-          data-testid="kpi-overdue-card"
-          @click="router.push('/financing/defaulters')"
-        >
-          <div>
-            <div class="d-flex align-center justify-space-between mb-1">
-              <span class="text-caption font-weight-bold text-error text-uppercase" style="letter-spacing: 0.05em;">Cartera en Mora</span>
-              <v-icon size="18" color="error">mdi-alert-circle</v-icon>
-            </div>
-            <div class="text-h6 font-weight-bold text-error" data-testid="kpi-overdue-amount">
-              {{ branchSummary ? money(branchSummary.financial.total_overdue) : '—' }}
-            </div>
-            <div class="text-caption text-medium-emphasis">
-              {{ branchSummary ? branchSummary.operational.participants_overdue : 0 }} clientes con cuotas vencidas
-            </div>
-          </div>
-          <div class="d-flex align-center justify-space-between text-caption text-error font-weight-medium mt-2 pt-1 border-t">
-            <span>Ver detalle morosos</span>
-            <v-icon size="14">mdi-arrow-right</v-icon>
-          </div>
-        </v-card>
-      </v-col>
-
-      <!-- 3. Capacidad del Programa -->
-      <v-col cols="12" sm="6" md="3">
-        <v-card elevation="0" rounded="lg" class="border bg-white pa-4 h-100 d-flex flex-column justify-space-between" data-testid="kpi-capacity-card">
-          <div>
-            <div class="d-flex align-center justify-space-between mb-1">
-              <span class="text-caption font-weight-bold text-medium-emphasis text-uppercase" style="letter-spacing: 0.05em;">Suscriptores</span>
-              <v-icon size="18" color="info">mdi-account-group</v-icon>
-            </div>
-            <div class="text-h6 font-weight-bold text-high-emphasis" data-testid="kpi-participants-count">
-              {{ branchSummary ? branchSummary.operational.participants_total : 0 }} / {{ branchSummary ? branchSummary.operational.participants_max : 0 }}
-            </div>
-            <div class="text-caption text-medium-emphasis">
-              {{ branchSummary ? branchSummary.operational.participants_up_to_date : 0 }} al día &bull; {{ branchSummary ? branchSummary.operational.groups_active : 0 }} activos
-            </div>
-          </div>
-          <div class="text-caption text-medium-emphasis mt-2 pt-1 border-t">
-            Total {{ branchSummary ? branchSummary.operational.groups_total : 0 }} grupos formados
-          </div>
-        </v-card>
-      </v-col>
-
-      <!-- 4. Vehículos Adjudicados -->
-      <v-col cols="12" sm="6" md="3">
-        <v-card
-          elevation="0"
-          rounded="lg"
-          class="border bg-white pa-4 h-100 d-flex flex-column justify-space-between cursor-pointer"
-          data-testid="kpi-awarded-card"
-          @click="router.push('/financing/awarded')"
-        >
-          <div>
-            <div class="d-flex align-center justify-space-between mb-1">
-              <span class="text-caption font-weight-bold text-medium-emphasis text-uppercase" style="letter-spacing: 0.05em;">Vehículos Entregados</span>
-              <v-icon size="18" color="secondary">mdi-car-key</v-icon>
-            </div>
-            <div class="text-h6 font-weight-bold text-high-emphasis" data-testid="kpi-awarded-count">
-              {{ branchSummary ? branchSummary.operational.awarded_total : 0 }}
-            </div>
-            <div class="text-caption text-medium-emphasis">
-              {{ branchSummary ? branchSummary.operational.pending_award_total : 0 }} adjudicaciones pendientes
-            </div>
-          </div>
-          <div class="d-flex align-center justify-space-between text-caption text-secondary font-weight-medium mt-2 pt-1 border-t">
-            <span>Ver padrón entregas</span>
-            <v-icon size="14">mdi-arrow-right</v-icon>
-          </div>
-        </v-card>
-      </v-col>
-    </v-row>
 
     <!-- ═══════════════════════════════════════════════════════════ -->
     <!-- SEGUNDA SECCIÓN: BARRA DE BÚSQUEDA (SECCIÓN SOLA, 7 COLS)   -->
@@ -565,7 +498,7 @@ onMounted(async () => {
             color="white"
             size="small"
             class="border rounded-circle flex-shrink-0"
-            :loading="groupsQuery.isLoading.value || isLoadingSummary"
+            :loading="groupsQuery.isLoading.value"
             data-testid="btn-refresh-groups"
             @click="refreshAll"
           />
@@ -584,7 +517,7 @@ onMounted(async () => {
         :headers="groupHeaders"
         :items="groupsQuery.items.value"
         :items-length="groupsQuery.totalItems.value"
-        :loading="groupsQuery.isLoading.value || isLoadingSummary"
+        :loading="groupsQuery.isLoading.value"
         :mobile="smAndDown"
         no-data-text="No hay datos disponibles"
         loading-text="Cargando grupos..."
@@ -604,40 +537,36 @@ onMounted(async () => {
           </div>
         </template>
 
-        <!-- Columna: Monto -->
-        <template #[`item.amount`]="{ item }">
-          <div class="font-weight-bold text-body-2 text-high-emphasis">
-            ${{ Number(item.amount || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) }}
-          </div>
-        </template>
-
-        <!-- Columna: Cuotas (ej: 24 / $50.00) -->
-        <template #[`item.installments`]="{ item }">
-          <div class="d-flex align-center justify-center">
-            <span class="font-weight-bold text-body-2 text-high-emphasis">
-              {{ item.installment_count }}
-            </span>
-            <span class="text-medium-emphasis mx-1">/</span>
-            <span class="text-body-2 text-medium-emphasis">
-              ${{ Number(item.installment_amount || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) }}
-            </span>
-          </div>
-        </template>
-
         <!-- Columna: Cobranza -->
         <template #[`item.collection`]="{ item }">
-          <div class="d-flex flex-column align-center ga-1 mx-auto" style="min-width: 90px; max-width: 110px;">
-            <div class="text-caption font-weight-bold text-high-emphasis">
-              {{ getGroupCollectionPct(item.id) }}%
-            </div>
-            <v-progress-linear
-              :model-value="getGroupCollectionPct(item.id)"
-              :color="getGroupCollectionPct(item.id) >= 70 ? 'success' : 'primary'"
-              height="5"
-              rounded
-              class="w-100"
-            />
-          </div>
+          <v-tooltip
+            location="top"
+            open-on-click
+            color="#1E293B"
+          >
+            <template #activator="{ props: tooltipProps }">
+              <div
+                v-bind="tooltipProps"
+                class="d-flex flex-column align-center ga-1 mx-auto cursor-pointer"
+                style="min-width: 90px; max-width: 110px;"
+                data-testid="group-collection-cell"
+              >
+                <div class="text-caption font-weight-bold text-high-emphasis">
+                  {{ getCollectionPct(item) }}%
+                </div>
+                <v-progress-linear
+                  :model-value="getCollectionPct(item)"
+                  :color="getCollectionPct(item) >= 70 ? 'success' : 'primary'"
+                  height="5"
+                  rounded
+                  class="w-100"
+                />
+              </div>
+            </template>
+            <span class="text-caption font-weight-medium">
+              ${{ formatMoney(item.total_collected) }} de ${{ formatMoney(item.total_committed) }}
+            </span>
+          </v-tooltip>
         </template>
 
         <template #[`item.participants`]="{ item }">
@@ -686,14 +615,6 @@ onMounted(async () => {
                   title="Ver Participantes"
                   data-testid="menu-item-participants"
                   @click="navigateToParticipants(item.id)"
-                />
-
-                <!-- 3. Operación de negocio -->
-                <v-list-item
-                  prepend-icon="mdi-calculator"
-                  title="Generar Cuotas"
-                  data-testid="menu-item-generate-receivables"
-                  @click="handleGenerateGroupReceivables(item)"
                 />
 
                 <v-divider class="my-1" />
@@ -745,53 +666,53 @@ onMounted(async () => {
         data-testid="input-group-name"
       />
 
-      <v-row dense class="mb-1">
+      <v-row density="compact" class="mb-1">
         <v-col cols="12" sm="6">
-          <v-select
+          <AppPaginatedSelect
             v-model="groupFormData.frequency_id"
-            :items="financingStore.frequencies"
-            :item-title="(item: any) => formatLocalized(item.name) || item.code || item.id"
-            :item-value="(item: any) => item.id"
+            :fetch-options="fetchFrequenciesOptions"
+            :fetch-by-id="fetchFrequencySingle"
             label="Frecuencia de Pago *"
-            placeholder="Seleccionar frecuencia"
-            variant="outlined"
+            placeholder="Seleccionar frecuencia..."
+            value-key="id"
+            label-key="name"
             density="comfortable"
             data-testid="select-group-frequency"
           />
         </v-col>
         <v-col cols="12" sm="6">
-          <v-select
+          <AppPaginatedSelect
             v-model="groupFormData.contract_type_id"
-            :items="financingStore.contractTypes"
-            :item-title="(item: any) => item.name || item.code || item.id"
-            :item-value="(item: any) => item.id"
+            :fetch-options="fetchContractTypesOptions"
+            :fetch-by-id="fetchContractTypeSingle"
             label="Tipo de Contrato"
-            placeholder="Seleccionar tipo de contrato"
+            placeholder="Seleccionar tipo de contrato..."
+            value-key="id"
+            label-key="name"
             clearable
-            variant="outlined"
             density="comfortable"
             data-testid="select-group-contract-type"
           />
         </v-col>
       </v-row>
 
-      <v-row dense class="mb-1">
+      <v-row density="compact" class="mb-1">
         <v-col cols="12" sm="6">
           <v-text-field
-            v-model.number="groupFormData.amount"
-            label="Monto Adjudicación ($) *"
+            v-model.number="groupFormData.installment_count"
+            label="Total Cuotas *"
             type="number"
             min="1"
-            step="0.01"
+            max="99"
             variant="outlined"
             density="comfortable"
-            data-testid="input-group-amount"
+            data-testid="input-group-installment-count"
           />
         </v-col>
         <v-col cols="12" sm="6">
           <v-text-field
             v-model.number="groupFormData.installment_amount"
-            label="Monto Cuota ($) *"
+            label="Cuota Regular por Integrante ($) *"
             type="number"
             min="1"
             step="0.01"
@@ -802,20 +723,8 @@ onMounted(async () => {
         </v-col>
       </v-row>
 
-      <v-row dense class="mb-1">
-        <v-col cols="12" sm="6">
-          <v-text-field
-            v-model.number="groupFormData.installment_count"
-            label="Total Cuotas (1-99) *"
-            type="number"
-            min="1"
-            max="99"
-            variant="outlined"
-            density="comfortable"
-            data-testid="input-group-installment-count"
-          />
-        </v-col>
-        <v-col cols="12" sm="6">
+      <v-row density="compact" class="mb-1">
+        <v-col cols="12" :sm="!editingGroupId ? 6 : 12">
           <v-text-field
             v-model.number="groupFormData.participant_max"
             label="Capacidad Máxima"
@@ -827,17 +736,17 @@ onMounted(async () => {
             data-testid="input-group-participant-max"
           />
         </v-col>
+        <v-col v-if="!editingGroupId" cols="12" sm="6">
+          <v-text-field
+            v-model="groupFormData.frequency_base_date"
+            label="Fecha Base de Cobros (YYYY-MM-DD) *"
+            type="date"
+            variant="outlined"
+            density="comfortable"
+            data-testid="input-group-base-date"
+          />
+        </v-col>
       </v-row>
-
-      <v-text-field
-        v-if="!editingGroupId"
-        v-model="groupFormData.frequency_base_date"
-        label="Fecha Base de Cobros (YYYY-MM-DD) *"
-        type="date"
-        variant="outlined"
-        density="comfortable"
-        data-testid="input-group-base-date"
-      />
     </v-form>
   </AppModal>
 
@@ -873,24 +782,16 @@ onMounted(async () => {
       </div>
 
       <!-- Métricas Financieras y Ciclo -->
-      <v-row dense>
-        <v-col cols="6" sm="3">
+      <v-row density="compact">
+        <v-col cols="6" sm="4">
           <div class="border rounded-lg pa-3 text-center">
-            <div class="text-caption text-medium-emphasis">Monto Adjudicación</div>
-            <div class="text-subtitle-1 font-weight-bold text-primary mt-1">
-              ${{ Number(selectedGroupDetails.amount || 0).toLocaleString('en-US', { minimumFractionDigits: 2 }) }}
-            </div>
-          </div>
-        </v-col>
-        <v-col cols="6" sm="3">
-          <div class="border rounded-lg pa-3 text-center">
-            <div class="text-caption text-medium-emphasis">Valor Cuota</div>
+            <div class="text-caption text-medium-emphasis">Cuota Regular</div>
             <div class="text-subtitle-1 font-weight-bold text-high-emphasis mt-1">
               ${{ Number(selectedGroupDetails.installment_amount || 0).toLocaleString('en-US', { minimumFractionDigits: 2 }) }}
             </div>
           </div>
         </v-col>
-        <v-col cols="6" sm="3">
+        <v-col cols="6" sm="4">
           <div class="border rounded-lg pa-3 text-center">
             <div class="text-caption text-medium-emphasis">Total Cuotas</div>
             <div class="text-subtitle-1 font-weight-bold text-high-emphasis mt-1">
@@ -898,11 +799,11 @@ onMounted(async () => {
             </div>
           </div>
         </v-col>
-        <v-col cols="6" sm="3">
+        <v-col cols="12" sm="4">
           <div class="border rounded-lg pa-3 text-center">
             <div class="text-caption text-medium-emphasis">Participantes</div>
             <div class="text-subtitle-1 font-weight-bold text-info mt-1">
-              {{ selectedGroupDetails.participant_count ?? 0 }} / {{ selectedGroupDetails.participant_max ?? 24 }}
+              {{ selectedGroupDetails.participant_count ?? 0 }} / {{ selectedGroupDetails.participant_max ?? 10 }}
             </div>
           </div>
         </v-col>

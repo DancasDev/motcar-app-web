@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, watch, onMounted } from 'vue'
+import { ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useBranchesStore } from '@/modules/branches/stores/branches.store'
 import { useAccountingStore } from '../stores/accounting.store'
@@ -139,12 +139,6 @@ watch(
     }
   }
 )
-
-onMounted(() => {
-  if (branchesStore.activeBranchId) {
-    receivablesQuery.refresh()
-  }
-})
 </script>
 
 <template>

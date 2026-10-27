@@ -96,7 +96,7 @@ export const routes: RouteRecordRaw[] = [
         path: 'financing/awarded',
         name: 'FinancingAwarded',
         component: () => import('@/modules/financing/views/AwardedBenefitsView.vue'),
-        meta: { title: 'Vehículos Adjudicados - Motcar App', requiresAuth: true, showBranchSelector: true }
+        meta: { title: 'Beneficios Adjudicados - Motcar App', requiresAuth: true, showBranchSelector: true }
       },
       {
         path: 'accounting',

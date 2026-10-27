@@ -108,7 +108,7 @@ const whatsappMessageText = computed<string>(() => {
   }
 
   if (s.participant.is_awarded) {
-    lines.push(`Vehículo Entregado: *Sí*`)
+    lines.push(`Beneficio Entregado: *Sí*`)
   }
 
   lines.push(`---`)
@@ -205,9 +205,9 @@ async function copySummaryToClipboard(): Promise<void> {
                   variant="flat"
                   size="small"
                   class="font-weight-bold mr-2 mb-1"
-                  prepend-icon="mdi-car-key"
+                  prepend-icon="mdi-certificate-outline"
                 >
-                  Vehículo Entregado
+                  Beneficio Entregado
                 </v-chip>
                 <v-chip
                   v-if="statement.summary.overdue_amount > 0"

@@ -36,14 +36,16 @@ export interface SamGroupItem {
   contract_type_id?: string | number
   contract_type_code?: string
   contract_type_name?: string
+  contract_type_metadata_schema_id?: string | number | null
   name: string
-  amount: string | number
   installment_amount: string | number
   installment_count: string | number
   participant_max?: string | number
   participant_count?: string | number
   frequency_base_date: string
   status: string | number
+  total_committed?: number
+  total_collected?: number
   is_disabled: string | boolean | number
   created_at?: string
   updated_at?: string | null
@@ -54,7 +56,6 @@ export interface CreateSamGroupPayload {
   name: string
   frequency_id: number | string
   contract_type_id?: number | string | null
-  amount: number | string
   installment_amount: number | string
   installment_count: number | string
   participant_max?: number | string
@@ -67,7 +68,6 @@ export interface UpdateSamGroupPayload {
   name?: string
   frequency_id?: number | string
   contract_type_id?: number | string | null
-  amount?: number | string
   installment_amount?: number | string
   installment_count?: number | string
   participant_max?: number | string
@@ -86,7 +86,13 @@ export interface ParticipantItem {
   referrer_id?: string | number
   referrer_first_name?: string
   referrer_last_name?: string
+  frequency_id?: string | number | null
+  frequency_code?: string
+  frequency_name?: string | Record<string, string>
+  frequency_base_date?: string | null
   position?: string | number
+  installment_amount?: number | string
+  installment_count?: number | string | null
   status: string | number
   is_overdue?: string | number
   awarded_at?: string | null
@@ -94,13 +100,16 @@ export interface ParticipantItem {
   created_at?: string
   updated_at?: string | null
   benefit_metadata?: Record<string, unknown> | null
-  installment_amount?: number | string
 }
 
 export interface CreateParticipantPayload {
   client_id: number | string
   referrer_id?: number | string
   position?: number | string
+  frequency_id?: number | string | null
+  frequency_base_date?: string | null
+  installment_amount?: number | string | null
+  installment_count?: number | string | null
   status?: string
   benefit_metadata?: Record<string, unknown>
   is_disabled?: string
@@ -109,6 +118,10 @@ export interface CreateParticipantPayload {
 export interface UpdateParticipantPayload {
   referrer_id?: number | string
   position?: number | string
+  frequency_id?: number | string | null
+  frequency_base_date?: string | null
+  installment_amount?: number | string | null
+  installment_count?: number | string | null
   status?: string
   benefit_metadata?: Record<string, unknown>
   awarded_at?: string | null

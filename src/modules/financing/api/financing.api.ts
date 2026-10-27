@@ -354,3 +354,16 @@ export async function fetchParticipantStatement(
   return response.data
 }
 
+
+
+export async function fetchContractPdf(
+  branchId: string | number,
+  groupId: string | number,
+  participantId: string | number
+): Promise<Blob> {
+  const response = await apiClient.get<Blob>(
+    ENDPOINTS.FINANCING.CONTRACT_PDF(branchId, groupId, participantId),
+    { responseType: 'blob' }
+  )
+  return response.data
+}

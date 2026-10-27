@@ -1,29 +1,29 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, watch, onMounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useDisplay } from 'vuetify'
 import { useAuthStore } from '@/modules/auth/stores/auth.store'
 import { useMyStore } from '@/modules/my/stores/my.store'
 import { useBranchesStore } from '@/modules/branches/stores/branches.store'
-import { useAccountingStore } from '@/modules/accounting/stores/accounting.store'
+import BranchSwitcher from '@/modules/branches/components/BranchSwitcher.vue'
 
 const authStore = useAuthStore()
 const myStore = useMyStore()
 const branchesStore = useBranchesStore()
-const accountingStore = useAccountingStore()
 const router = useRouter()
 const route = useRoute()
-const { mobile, mdAndUp } = useDisplay()
+const { mdAndUp } = useDisplay()
 
 const appVersion = 'V0.0.1'
-const drawer = ref<boolean>(!mobile.value)
+const drawer = ref<boolean>(mdAndUp.value)
+watch(mdAndUp, (isDesktop) => { drawer.value = isDesktop })
 const notificationsMenuOpen = ref(false)
 const userMenuOpen = ref(false)
 const isSyncingAccess = ref(false)
 const syncSuccessSnackbar = ref(false)
 
 function handleNavClick(): void {
-  if (mobile.value) {
+  if (!mdAndUp.value) {
     drawer.value = false
   }
 }
@@ -32,8 +32,7 @@ onMounted(async () => {
   if (authStore.isAuthenticated) {
     await Promise.all([
       myStore.loadUnreadCount(),
-      branchesStore.loadBranches(),
-      accountingStore.loadCurrentExchangeRate(2)
+      branchesStore.loadBranches()
     ])
   }
 })
@@ -117,7 +116,7 @@ const navItems: NavItem[] = [
       { to: '/financing/groups', icon: 'mdi-account-group-outline', title: 'Grupos SAM', testId: 'nav-financing-groups' },
       { to: '/financing/defaulters', icon: 'mdi-alert-circle-outline', title: 'Cartera de Morosos', testId: 'nav-financing-defaulters' },
       { to: '/financing/calendar', icon: 'mdi-calendar-clock-outline', title: 'Calendario de Cobros', testId: 'nav-financing-calendar' },
-      { to: '/financing/awarded', icon: 'mdi-car-key', title: 'Vehículos Adjudicados', testId: 'nav-financing-awarded' }
+      { to: '/financing/awarded', icon: 'mdi-certificate-outline', title: 'Beneficios Entregados', testId: 'nav-financing-awarded' }
     ]
   },
   {
@@ -145,7 +144,7 @@ const openedNavGroups = ref<string[]>(['Directorios', 'Autofinanciamiento Colect
       :permanent="mdAndUp"
       :rail="mdAndUp"
       :expand-on-hover="mdAndUp"
-      :temporary="mobile"
+      :temporary="!mdAndUp"
       width="270"
       rail-width="68"
       elevation="0"
@@ -177,7 +176,12 @@ const openedNavGroups = ref<string[]>(['Directorios', 'Autofinanciamiento Colect
           </div>
         </div>
 
-        <!-- 2. Lista de Módulos -->
+        <!-- 2. Selector de Sucursal estilo GoHighLevel (Fijo en la parte superior) -->
+        <div class="sidebar-branch-section px-3 py-2 border-b-dark">
+          <BranchSwitcher />
+        </div>
+
+        <!-- 3. Lista de Módulos -->
         <div class="flex-grow-1 overflow-y-auto px-2 py-3 sidebar-scroll">
           <v-list density="compact" nav class="pa-0 bg-transparent" v-model:opened="openedNavGroups">
             <template v-for="item in navItems" :key="item.title">
@@ -274,103 +278,6 @@ const openedNavGroups = ref<string[]>(['Directorios', 'Autofinanciamiento Colect
         rounded="lg"
         class="mr-1"
       />
-
-      <!-- Selector de Sucursal Activa Global (Visible según route.meta.showBranchSelector) -->
-      <div v-if="Boolean(route.meta.showBranchSelector)" class="topbar-branch-wrapper d-flex align-center">
-        <v-menu location="bottom start" :offset="14">
-          <template #activator="{ props }">
-            <v-btn
-              v-bind="props"
-              variant="flat"
-              size="small"
-              rounded="pill"
-              class="topbar-branch-btn text-none px-3 border"
-              data-testid="branch-switcher"
-            >
-              <v-icon icon="mdi-office-building-marker" size="small" color="primary" class="mr-1 flex-shrink-0" />
-              <span class="d-none d-sm-inline text-medium-emphasis mr-1 font-weight-regular flex-shrink-0">
-                Sucursal:
-              </span>
-              <span class="font-weight-bold text-high-emphasis text-truncate topbar-branch-text">
-                {{ branchesStore.activeBranch?.name || 'Seleccionar' }}
-              </span>
-              <v-icon icon="mdi-chevron-down" size="x-small" class="ml-1 text-medium-emphasis flex-shrink-0" />
-            </v-btn>
-          </template>
-
-          <div class="popover-wrapper">
-            <!-- Flecha apuntando al selector de sucursales -->
-            <div class="popover-arrow popover-arrow-start"></div>
-
-            <v-card min-width="270" max-width="340" rounded="lg" elevation="6" class="popover-dropdown-card">
-              <div class="px-4 py-3 d-flex align-center justify-space-between border-b bg-white">
-                <span class="text-subtitle-2 font-weight-bold text-high-emphasis">
-                  Sucursales
-                </span>
-                <span class="text-caption text-medium-emphasis font-weight-medium">
-                  {{ branchesStore.branchesList.length }} disponibles
-                </span>
-              </div>
-
-              <v-list density="compact" nav class="py-1.5 px-2" data-testid="branch-switcher-list">
-                <v-list-item
-                  v-for="branch in branchesStore.branchesList"
-                  :key="branch.id"
-                  :active="String(branchesStore.activeBranchId) === String(branch.id)"
-                  color="primary"
-                  :data-testid="`branch-item-${branch.id}`"
-                  rounded="lg"
-                  class="my-0.5"
-                  @click="branchesStore.setActiveBranch(branch.id)"
-                >
-                  <template #prepend>
-                    <v-icon
-                      :icon="String(branchesStore.activeBranchId) === String(branch.id) ? 'mdi-check-circle' : 'mdi-office-building-outline'"
-                      :color="String(branchesStore.activeBranchId) === String(branch.id) ? 'primary' : 'medium-emphasis'"
-                      size="small"
-                    />
-                  </template>
-                  <v-list-item-title class="font-weight-medium text-body-2 text-truncate" :title="branch.name">
-                    {{ branch.name }}
-                  </v-list-item-title>
-                </v-list-item>
-                <v-list-item
-                  v-if="branchesStore.branchesList.length === 0"
-                  class="text-caption text-grey text-center py-4"
-                >
-                  No hay sucursales registradas
-                </v-list-item>
-              </v-list>
-            </v-card>
-          </div>
-        </v-menu>
-      </div>
-
-      <!-- Indicador Global de Tasa de Cambio Activa -->
-      <div class="d-none d-sm-flex align-center ml-2">
-        <v-btn
-          variant="tonal"
-          size="small"
-          rounded="pill"
-          class="text-none px-3 border"
-          :color="accountingStore.currentRates['2'] ? 'primary' : 'warning'"
-          to="/accounting/exchange-rates"
-          data-testid="topbar-exchange-rate"
-          title="Ver o actualizar tasas de cambio"
-        >
-          <v-icon
-            :icon="accountingStore.currentRates['2'] ? 'mdi-currency-usd' : 'mdi-alert-circle-outline'"
-            size="small"
-            class="mr-1"
-          />
-          <span v-if="accountingStore.currentRates['2']" class="font-weight-medium">
-            Tasa: <strong class="ml-1">Bs. {{ Number(accountingStore.currentRates['2'].value).toFixed(2) }}</strong>
-          </span>
-          <span v-else class="font-weight-medium">
-            Actualizar Tasa
-          </span>
-        </v-btn>
-      </div>
 
       <v-spacer class="d-none d-md-flex" />
 
@@ -621,10 +528,46 @@ const openedNavGroups = ref<string[]>(['Directorios', 'Autofinanciamiento Colect
   margin-right: 0 !important;
 }
 
+.sidebar-drawer.v-navigation-drawer--rail:not(.v-navigation-drawer--is-hovering) :deep(.branch-trigger-info),
+.sidebar-drawer.v-navigation-drawer--rail:not(:hover) :deep(.branch-trigger-info),
+.sidebar-drawer.v-navigation-drawer--rail:not(.v-navigation-drawer--is-hovering) :deep(.branch-trigger-chevron),
+.sidebar-drawer.v-navigation-drawer--rail:not(:hover) :deep(.branch-trigger-chevron) {
+  display: none !important;
+}
+
+.sidebar-drawer.v-navigation-drawer--rail:not(.v-navigation-drawer--is-hovering) :deep(.branch-trigger-card),
+.sidebar-drawer.v-navigation-drawer--rail:not(:hover) :deep(.branch-trigger-card) {
+  padding: 6px !important;
+  gap: 0 !important;
+  justify-content: center !important;
+}
+
+.sidebar-drawer.v-navigation-drawer--rail:not(.v-navigation-drawer--is-hovering) .sidebar-branch-section,
+.sidebar-drawer.v-navigation-drawer--rail:not(:hover) .sidebar-branch-section {
+  padding-left: 8px !important;
+  padding-right: 8px !important;
+}
+
 /* Al expandirse con hover */
 .sidebar-drawer.v-navigation-drawer--is-hovering .sidebar-header-text,
 .sidebar-drawer:hover .sidebar-header-text {
   display: block !important;
+}
+
+.sidebar-drawer.v-navigation-drawer--is-hovering :deep(.branch-trigger-info),
+.sidebar-drawer:hover :deep(.branch-trigger-info) {
+  display: block !important;
+}
+
+.sidebar-drawer.v-navigation-drawer--is-hovering :deep(.branch-trigger-chevron),
+.sidebar-drawer:hover :deep(.branch-trigger-chevron) {
+  display: block !important;
+}
+
+.sidebar-drawer.v-navigation-drawer--is-hovering :deep(.branch-trigger-card),
+.sidebar-drawer:hover :deep(.branch-trigger-card) {
+  padding: 6px 10px !important;
+  justify-content: flex-start !important;
 }
 
 .sidebar-drawer.v-navigation-drawer--is-hovering .sidebar-header,

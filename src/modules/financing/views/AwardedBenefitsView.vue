@@ -101,20 +101,20 @@ const filteredList = computed(() => {
 const headers = [
   { title: 'Cliente / Cédula', key: 'client', align: 'start' as const },
   { title: 'Grupo / Posición', key: 'group', align: 'start' as const, width: '150px' },
-  { title: 'Vehículo / Beneficio', key: 'vehicle', align: 'start' as const },
+  { title: 'Beneficio Adjudicado', key: 'benefit', align: 'start' as const },
   { title: 'Fecha Adjudicación', key: 'awarded_at', align: 'center' as const, width: '150px' },
   { title: 'Solvencia Post-Entrega', key: 'solvency', align: 'center' as const, width: '170px' },
   { title: 'Referente', key: 'referrer', align: 'start' as const, width: '150px' },
   { title: 'Acciones', key: 'actions', align: 'end' as const, sortable: false, width: '130px' }
 ]
 
-function formatVehicle(meta: Record<string, any> | null): string {
-  if (!meta) return 'Vehículo entregado'
+function formatBenefit(meta: Record<string, any> | null): string {
+  if (!meta) return 'Beneficio entregado'
   const brand = meta.brand || ''
   const model = meta.model || meta.vehicle_model || ''
   const color = meta.color ? ` (${meta.color})` : ''
   const parts = [brand, model].filter(Boolean).join(' ')
-  return (parts || 'Vehículo entregado') + color
+  return (parts || 'Beneficio entregado') + color
 }
 
 function openStatement(participantId: number | string): void {
@@ -123,15 +123,15 @@ function openStatement(participantId: number | string): void {
 }
 
 function getClientWa(item: AwardedBenefitItem): string | null {
-  const veh = formatVehicle(item.benefit_metadata)
-  const msg = `Estimado(a) ${item.client.name}, le saludamos de MotCar en relación a su vehículo ${veh} del grupo ${item.group_name}. Deseamos validar su estatus y satisfacción con la unidad.`
+  const ben = formatBenefit(item.benefit_metadata)
+  const msg = `Estimado(a) ${item.client.name}, le saludamos de MotCar en relación a su beneficio ${ben} del grupo ${item.group_name}. Deseamos validar su estatus y satisfacción con la entrega.`
   return waLink(item.client.phone, msg)
 }
 
 function getReferrerWa(item: AwardedBenefitItem): string | null {
   if (!item.referrer?.phone) return null
-  const veh = formatVehicle(item.benefit_metadata)
-  const msg = `Hola ${item.referrer.name}, le saludamos de MotCar respecto a su referido ${item.client.name} adjudicado con un(a) ${veh} en ${item.group_name}. Gracias por su colaboración.`
+  const ben = formatBenefit(item.benefit_metadata)
+  const msg = `Hola ${item.referrer.name}, le saludamos de MotCar respecto a su referido ${item.client.name} adjudicado con un(a) ${ben} en ${item.group_name}. Gracias por su colaboración.`
   return waLink(item.referrer.phone, msg)
 }
 </script>
@@ -144,10 +144,10 @@ function getReferrerWa(item: AwardedBenefitItem): string | null {
     <div class="d-flex align-center justify-space-between flex-wrap ga-3 mb-6">
       <div>
         <h1 class="text-h5 font-weight-bold text-high-emphasis mb-0 leading-tight">
-          Padrón de Adjudicaciones
+          Padrón de Beneficios Entregados
         </h1>
         <p class="text-body-2 text-medium-emphasis mb-0 mt-0">
-          Bitácora de vehículos entregados, garantías y monitoreo de solvencia posterior
+          Bitácora de beneficios adjudicados, garantías y monitoreo de solvencia posterior
         </p>
       </div>
 
@@ -199,13 +199,13 @@ function getReferrerWa(item: AwardedBenefitItem): string | null {
         <v-card elevation="0" rounded="lg" class="border bg-white pa-4 h-100">
           <div class="d-flex align-center justify-space-between mb-1">
             <span class="text-caption font-weight-bold text-purple text-uppercase">Total Adjudicados</span>
-            <v-icon size="20" color="purple">mdi-shield-car</v-icon>
+            <v-icon size="20" color="purple">mdi-certificate-outline</v-icon>
           </div>
           <div class="text-h6 font-weight-bold text-high-emphasis" data-testid="awarded-total-count">
             {{ summary.total }}
           </div>
           <div class="text-caption text-medium-emphasis">
-            Vehículos entregados a suscriptores
+            Beneficios entregados a suscriptores
           </div>
         </v-card>
       </v-col>
@@ -251,7 +251,7 @@ function getReferrerWa(item: AwardedBenefitItem): string | null {
           <v-text-field
             v-model="searchQuery"
             prepend-inner-icon="mdi-magnify"
-            placeholder="Buscar por cliente, cédula, grupo, vehículo o referente..."
+            placeholder="Buscar por cliente, cédula, grupo, beneficio o referente..."
             variant="outlined"
             density="compact"
             hide-details
@@ -344,15 +344,15 @@ function getReferrerWa(item: AwardedBenefitItem): string | null {
           </div>
         </template>
 
-        <!-- Vehículo / Beneficio -->
-        <template #[`item.vehicle`]="{ item }">
+        <!-- Beneficio Adjudicado -->
+        <template #[`item.benefit`]="{ item }">
           <div class="d-flex align-center ga-2 py-1">
             <v-avatar size="32" color="purple-lighten-5">
-              <v-icon size="18" color="purple">mdi-motorbike</v-icon>
+              <v-icon size="18" color="purple">mdi-certificate-outline</v-icon>
             </v-avatar>
             <div>
               <div class="font-weight-medium text-body-2 text-high-emphasis">
-                {{ formatVehicle(item.benefit_metadata) }}
+                {{ formatBenefit(item.benefit_metadata) }}
               </div>
               <div v-if="item.benefit_metadata?.raffle_number" class="text-caption text-medium-emphasis">
                 Sorteo #{{ item.benefit_metadata.raffle_number }}

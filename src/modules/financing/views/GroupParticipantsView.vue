@@ -10,14 +10,19 @@ import {
   updateParticipant as apiUpdateParticipant,
   deleteParticipant as apiDeleteParticipant,
   fetchSamGroupById,
-  emitContract
+  fetchPaymentFrequencies,
+  emitContract,
+  fetchContractPdf
 } from '../api/financing.api'
 import type {
   SamGroupItem,
-  ParticipantItem
+  ParticipantItem,
+  PaymentFrequencyItem
 } from '../types'
 import type { DqbFilterTuple } from '@/types/query'
 import AppPaginatedSelect, { type PaginatedQueryParams } from '@/components/common/AppPaginatedSelect.vue'
+import AppMetadataRenderer, { type MetadataSchemaPayload } from '@/components/common/AppMetadataRenderer.vue'
+import { fetchMetadataSchemaRender } from '@/modules/system/api/system.api'
 import { fetchPersons, fetchPersonById } from '@/modules/catalogs/api/catalogs.api'
 import type { PersonItem } from '@/modules/catalogs/types'
 import StatementModal from '../components/StatementModal.vue'
@@ -31,12 +36,55 @@ const groupId = computed(() => String(route.params.groupId || ''))
 const currentGroup = ref<SamGroupItem | null>(null)
 const isLoadingGroup = ref(false)
 
+const contractMetadataSchema = ref<MetadataSchemaPayload | null>(null)
+const isLoadingSchema = ref(false)
+
+async function loadContractMetadataSchema(): Promise<void> {
+  let schemaId: string | number | null | undefined = currentGroup.value?.contract_type_metadata_schema_id
+
+  if (!schemaId && currentGroup.value?.contract_type_id) {
+    if (financingStore.contractTypes.length === 0) {
+      await financingStore.loadCatalogs()
+    }
+    const found = financingStore.contractTypes.find(
+      (c) => String(c.id) === String(currentGroup.value?.contract_type_id)
+    )
+    schemaId = found?.metadata_schema_id
+  }
+
+  if (!schemaId) {
+    contractMetadataSchema.value = null
+    return
+  }
+
+  isLoadingSchema.value = true
+  try {
+    const res = await fetchMetadataSchemaRender(schemaId)
+    contractMetadataSchema.value = (res.data || null) as MetadataSchemaPayload | null
+  } catch (err) {
+    console.error('Error al cargar esquema de metadatos del contrato:', err)
+    contractMetadataSchema.value = null
+  } finally {
+    isLoadingSchema.value = false
+  }
+}
+
+
+function getFieldLabel(fieldDef: any): string {
+  if (!fieldDef) return ''
+  const attr = typeof fieldDef.attribute_values === 'string'
+    ? (() => { try { return JSON.parse(fieldDef.attribute_values) } catch { return {} } })()
+    : (fieldDef.attribute_values || {})
+  return attr.label || fieldDef.name || fieldDef.code
+}
+
 async function loadGroupDetails(): Promise<void> {
   if (!branchesStore.activeBranchId || !groupId.value) return
   isLoadingGroup.value = true
   try {
     const res = await fetchSamGroupById(branchesStore.activeBranchId, groupId.value)
     currentGroup.value = res.data || null
+    await loadContractMetadataSchema()
   } catch (err) {
     console.error('Error al cargar datos del grupo:', err)
   } finally {
@@ -102,6 +150,136 @@ const deleteDialogOpen = ref(false)
 const participantToDelete = ref<ParticipantItem | null>(null)
 const isDeletingParticipant = ref(false)
 
+
+function formatLocalized(name: unknown): string {
+  if (!name) return ''
+  if (typeof name === 'object') {
+    const obj = name as Record<string, string>
+    return obj.es || obj.en || Object.values(obj)[0] || ''
+  }
+  if (typeof name === 'string' && name.startsWith('{')) {
+    try {
+      const parsed = JSON.parse(name)
+      return parsed.es || parsed.en || Object.values(parsed)[0] || name
+    } catch {
+      return name
+    }
+  }
+  return String(name)
+}
+
+async function fetchFrequenciesOptions(params: PaginatedQueryParams): Promise<{ items: any[]; total: number }> {
+  try {
+    const dqbFilters: any[] = []
+    if (params.search && params.search.trim()) {
+      const term = params.search.trim()
+      dqbFilters.push(['name', term, 'LIKE', 'AND', 'BOTH'])
+    }
+    const res = await fetchPaymentFrequencies({
+      page: params.page,
+      itemsPerPage: params.pageSize,
+      filters: dqbFilters.length > 0 ? JSON.stringify(dqbFilters) : undefined
+    })
+    const items = (res.data || []).map((f: PaymentFrequencyItem) => ({
+      ...f,
+      id: Number(f.id),
+      name: formatLocalized(f.name) || f.code
+    }))
+    return {
+      items,
+      total: res.count ?? items.length
+    }
+  } catch (err) {
+    console.error('Error al consultar frecuencias:', err)
+    return { items: [], total: 0 }
+  }
+}
+
+async function fetchFrequencySingle(id: any): Promise<any> {
+  if (!id) return null
+  const found = financingStore.frequencies.find((f: any) => String(f.id) === String(id))
+  if (found) {
+    return {
+      ...found,
+      id: Number(found.id),
+      name: formatLocalized(found.name) || found.code
+    }
+  }
+  try {
+    const res = await fetchPaymentFrequencies({ filters: JSON.stringify([['id', id]]) })
+    const item = res.data?.[0]
+    if (!item) return null
+    return {
+      ...item,
+      id: Number(item.id),
+      name: formatLocalized(item.name) || item.code
+    }
+  } catch {
+    return null
+  }
+}
+
+
+// Modal de Datos del Beneficio
+const benefitDialogOpen = ref(false)
+const selectedBenefitParticipant = ref<ParticipantItem | null>(null)
+const isSubmittingBenefit = ref(false)
+const benefitFormData = ref<Record<string, any>>({})
+
+function openBenefitDialog(participant: ParticipantItem): void {
+  selectedBenefitParticipant.value = participant
+  let metadata: Record<string, any> = {}
+  if (typeof participant.benefit_metadata === 'string') {
+    try {
+      metadata = JSON.parse(participant.benefit_metadata)
+    } catch {
+      metadata = {}
+    }
+  } else if (participant.benefit_metadata) {
+    metadata = { ...(participant.benefit_metadata as Record<string, any>) }
+  }
+
+  if (!metadata.reference_value && currentGroup.value?.installment_amount && currentGroup.value?.installment_count) {
+    metadata.reference_value = Number(currentGroup.value.installment_amount) * Number(currentGroup.value.installment_count)
+  }
+  if (!metadata.year) {
+    metadata.year = new Date().getFullYear()
+  }
+
+  benefitFormData.value = metadata
+  benefitDialogOpen.value = true
+}
+
+async function handleSaveBenefit(): Promise<void> {
+  if (!selectedBenefitParticipant.value || !branchesStore.activeBranchId || !groupId.value) return
+
+  isSubmittingBenefit.value = true
+  try {
+    await apiUpdateParticipant(
+      branchesStore.activeBranchId,
+      groupId.value,
+      selectedBenefitParticipant.value.id,
+      {
+        benefit_metadata: { ...benefitFormData.value }
+      }
+    )
+    showMessage('Datos del beneficio guardados exitosamente.')
+    benefitDialogOpen.value = false
+    selectedBenefitParticipant.value = null
+    participantsQuery.refresh()
+  } catch (err: unknown) {
+    const errorObj = err as any
+    const msg =
+      errorObj?.response?.data?.message ||
+      errorObj?.response?.data?.messages?.error ||
+      errorObj?.response?.data?.error ||
+      (err instanceof Error ? err.message : 'Error al guardar los datos del beneficio.')
+    showMessage(msg, 'error')
+  } finally {
+    isSubmittingBenefit.value = false
+  }
+}
+
 // Autocompletado paginado de personas (Clientes y Asesores)
 async function fetchPersonsOptions(params: PaginatedQueryParams): Promise<{ items: any[]; total: number }> {
   try {
@@ -154,27 +332,21 @@ const participantFormData = ref<{
   client_id: number | null
   referrer_id: number | null
   position: number | null
+  frequency_id: number | null
+  frequency_base_date: string
+  installment_amount: number | null
+  installment_count: number | null
   status: string
-  vehicle_brand: string
-  vehicle_model: string
-  vehicle_year: number | null
-  vehicle_reference_value: number | null
-  color: string
-  chassis: string
-  plate: string
   is_disabled: boolean
 }>({
   client_id: null,
   referrer_id: null,
   position: null,
+  frequency_id: null,
+  frequency_base_date: '',
+  installment_amount: null,
+  installment_count: null,
   status: '1',
-  vehicle_brand: '',
-  vehicle_model: '',
-  vehicle_year: null,
-  vehicle_reference_value: null,
-  color: '',
-  chassis: '',
-  plate: '',
   is_disabled: false
 })
 
@@ -184,14 +356,11 @@ function openCreateParticipantDialog(): void {
     client_id: null,
     referrer_id: null,
     position: null,
+    frequency_id: null,
+    frequency_base_date: '',
+    installment_amount: null,
+    installment_count: null,
     status: '1',
-    vehicle_brand: '',
-    vehicle_model: '',
-    vehicle_year: new Date().getFullYear(),
-    vehicle_reference_value: currentGroup.value ? Number(currentGroup.value.amount) : null,
-    color: '',
-    chassis: '',
-    plate: '',
     is_disabled: false
   }
   participantDialogOpen.value = true
@@ -199,29 +368,19 @@ function openCreateParticipantDialog(): void {
 
 function openEditParticipantDialog(participant: ParticipantItem): void {
   editingParticipantId.value = participant.id
-  let metadata: Record<string, any> = {}
-  if (typeof participant.benefit_metadata === 'string') {
-    try {
-      metadata = JSON.parse(participant.benefit_metadata)
-    } catch {
-      metadata = {}
-    }
-  } else if (participant.benefit_metadata) {
-    metadata = participant.benefit_metadata as Record<string, any>
-  }
-
   participantFormData.value = {
     client_id: Number(participant.client_id),
     referrer_id: participant.referrer_id ? Number(participant.referrer_id) : null,
     position: participant.position ? Number(participant.position) : null,
+    frequency_id: participant.frequency_id ? Number(participant.frequency_id) : null,
+    frequency_base_date: participant.frequency_base_date || '',
+    installment_amount: participant.installment_amount !== undefined && participant.installment_amount !== null
+      ? Number(participant.installment_amount)
+      : null,
+    installment_count: participant.installment_count !== undefined && participant.installment_count !== null
+      ? Number(participant.installment_count)
+      : null,
     status: String(participant.status ?? '1'),
-    vehicle_brand: metadata.brand || '',
-    vehicle_model: metadata.model || metadata.vehicle_model || '',
-    vehicle_year: metadata.year ? Number(metadata.year) : null,
-    vehicle_reference_value: metadata.reference_value ? Number(metadata.reference_value) : null,
-    color: metadata.color || '',
-    chassis: metadata.chassis_serial || metadata.chassis || '',
-    plate: metadata.plate || '',
     is_disabled: participant.is_disabled === '1' || participant.is_disabled === true
   }
   participantDialogOpen.value = true
@@ -286,33 +445,45 @@ async function handleSaveParticipant(): Promise<void> {
     showMessage('Selecciona el cliente suscriptor.', 'error')
     return
   }
-  if (!participantFormData.value.vehicle_brand?.trim()) {
-    showMessage('Ingresa la marca del vehículo adjudicable.', 'error')
-    return
-  }
-  if (!participantFormData.value.vehicle_model?.trim()) {
-    showMessage('Ingresa el modelo del vehículo adjudicable.', 'error')
-    return
-  }
 
   isSubmittingParticipant.value = true
   try {
-    const metadata: Record<string, any> = {
-      brand: participantFormData.value.vehicle_brand.trim(),
-      model: participantFormData.value.vehicle_model.trim(),
-      year: Number(participantFormData.value.vehicle_year || new Date().getFullYear()),
-      reference_value: participantFormData.value.vehicle_reference_value
-        ? Number(participantFormData.value.vehicle_reference_value)
-        : Number(currentGroup.value?.amount || 1000)
-    }
-    if (participantFormData.value.color?.trim()) {
-      metadata.color = participantFormData.value.color.trim()
-    }
-    if (participantFormData.value.chassis?.trim()) {
-      metadata.chassis_serial = participantFormData.value.chassis.trim()
-    }
-    if (participantFormData.value.plate?.trim()) {
-      metadata.plate = participantFormData.value.plate.trim()
+    const customFrequencyId =
+      participantFormData.value.frequency_id &&
+      String(participantFormData.value.frequency_id) !== String(currentGroup.value?.frequency_id)
+        ? Number(participantFormData.value.frequency_id)
+        : null
+
+    const customBaseDate =
+      participantFormData.value.frequency_base_date &&
+      participantFormData.value.frequency_base_date !== currentGroup.value?.frequency_base_date
+        ? participantFormData.value.frequency_base_date
+        : null
+
+    const customAmount =
+      participantFormData.value.installment_amount !== null &&
+      participantFormData.value.installment_amount !== undefined &&
+      Number(participantFormData.value.installment_amount) !== Number(currentGroup.value?.installment_amount)
+        ? Number(participantFormData.value.installment_amount)
+        : null
+
+    const customCount =
+      participantFormData.value.installment_count !== null &&
+      participantFormData.value.installment_count !== undefined &&
+      Number(participantFormData.value.installment_count) !== Number(currentGroup.value?.installment_count)
+        ? Number(participantFormData.value.installment_count)
+        : null
+
+    const payload = {
+      client_id: Number(participantFormData.value.client_id),
+      referrer_id: participantFormData.value.referrer_id ? Number(participantFormData.value.referrer_id) : undefined,
+      position: participantFormData.value.position ? Number(participantFormData.value.position) : undefined,
+      frequency_id: customFrequencyId,
+      frequency_base_date: customBaseDate,
+      installment_amount: customAmount,
+      installment_count: customCount,
+      status: participantFormData.value.status,
+      is_disabled: participantFormData.value.is_disabled ? '1' : '0'
     }
 
     if (editingParticipantId.value) {
@@ -320,27 +491,14 @@ async function handleSaveParticipant(): Promise<void> {
         branchesStore.activeBranchId,
         groupId.value,
         editingParticipantId.value,
-        {
-          referrer_id: participantFormData.value.referrer_id ? Number(participantFormData.value.referrer_id) : undefined,
-          position: participantFormData.value.position ? Number(participantFormData.value.position) : undefined,
-          status: participantFormData.value.status,
-          benefit_metadata: metadata,
-          is_disabled: participantFormData.value.is_disabled ? '1' : '0'
-        }
+        payload
       )
       showMessage('Participante actualizado exitosamente.')
     } else {
       await apiCreateParticipant(
         branchesStore.activeBranchId,
         groupId.value,
-        {
-          client_id: Number(participantFormData.value.client_id),
-          referrer_id: participantFormData.value.referrer_id ? Number(participantFormData.value.referrer_id) : undefined,
-          position: participantFormData.value.position ? Number(participantFormData.value.position) : undefined,
-          status: participantFormData.value.status,
-          benefit_metadata: metadata,
-          is_disabled: participantFormData.value.is_disabled ? '1' : '0'
-        }
+        payload
       )
       showMessage('Participante incorporado exitosamente al grupo.')
     }
@@ -398,25 +556,65 @@ function openQuotesDialog(participant: ParticipantItem): void {
 }
 
 // ---------------------------------------------------------------------
-// 6. Emisión de Contrato para Participante
+// 6. Emisión y Descarga de Contrato para Participante
 // ---------------------------------------------------------------------
 const isEmittingContract = ref(false)
+const isLoadingContractPdf = ref<Record<string | number, boolean>>({})
+
+async function handleDownloadContractPdf(participant: ParticipantItem): Promise<void> {
+  if (!branchesStore.activeBranchId || !groupId.value) return
+  isLoadingContractPdf.value[participant.id] = true
+  try {
+    const blob = await fetchContractPdf(branchesStore.activeBranchId, groupId.value, participant.id)
+    const blobUrl = window.URL.createObjectURL(new Blob([blob], { type: 'application/pdf' }))
+    const newWindow = window.open(blobUrl, '_blank')
+    if (!newWindow || newWindow.closed || typeof newWindow.closed === 'undefined') {
+      const link = document.createElement('a')
+      link.href = blobUrl
+      link.download = `Contrato-Turno-${participant.position || participant.id}.pdf`
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+    }
+    setTimeout(() => window.URL.revokeObjectURL(blobUrl), 30000)
+  } catch (err: unknown) {
+    const errorObj = err as any
+    if (errorObj?.response?.status === 404) {
+      showMessage('El participante aún no tiene un contrato emitido. Use "Emitir Contrato" primero.', 'warning')
+    } else {
+      const msg =
+        errorObj?.response?.data?.message ||
+        errorObj?.response?.data?.messages?.error ||
+        errorObj?.response?.data?.error ||
+        (err instanceof Error ? err.message : 'Error al obtener el PDF del contrato.')
+      showMessage(msg, 'error')
+    }
+  } finally {
+    isLoadingContractPdf.value[participant.id] = false
+  }
+}
 
 async function handleEmitContract(participant: ParticipantItem): Promise<void> {
   if (!branchesStore.activeBranchId || !groupId.value) return
   isEmittingContract.value = true
   try {
     await emitContract(branchesStore.activeBranchId, groupId.value, participant.id)
-    showMessage(`Contrato emitido exitosamente para el suscriptor turno #${participant.position}.`)
+    showMessage(`Contrato emitido exitosamente para el suscriptor turno #${participant.position}. Abriendo PDF...`)
     participantsQuery.refresh()
+    await handleDownloadContractPdf(participant)
   } catch (err: unknown) {
     const errorObj = err as any
-    const msg =
-      errorObj?.response?.data?.message ||
-      errorObj?.response?.data?.messages?.error ||
-      errorObj?.response?.data?.error ||
-      (err instanceof Error ? err.message : 'Error al emitir contrato.')
-    showMessage(msg, 'error')
+    if (errorObj?.response?.data?.error === 'CONTRACT_ALREADY_EXISTS') {
+      showMessage('El contrato ya fue emitido previamente. Abriendo PDF...', 'info')
+      await handleDownloadContractPdf(participant)
+    } else {
+      const msg =
+        errorObj?.response?.data?.message ||
+        errorObj?.response?.data?.messages?.error ||
+        errorObj?.response?.data?.error ||
+        (err instanceof Error ? err.message : 'Error al emitir contrato.')
+      showMessage(msg, 'error')
+    }
   } finally {
     isEmittingContract.value = false
   }
@@ -425,13 +623,18 @@ async function handleEmitContract(participant: ParticipantItem): Promise<void> {
 // ---------------------------------------------------------------------
 // 7. Feedback y Reactividad
 // ---------------------------------------------------------------------
-const snackbar = ref({
+const snackbar = ref<{
+  show: boolean
+  text: string
+  color: 'success' | 'error' | 'warning' | 'info'
+}>({
+
   show: false,
   text: '',
   color: 'success'
 })
 
-function showMessage(text: string, color: 'success' | 'error' = 'success'): void {
+function showMessage(text: string, color: 'success' | 'error' | 'warning' | 'info' = 'success'): void {
   if (snackbar.value.show) {
     snackbar.value.show = false
     setTimeout(() => {
@@ -573,7 +776,40 @@ onMounted(() => {
             data-testid="btn-refresh-participants"
             @click="participantsQuery.refresh()"
           />
-        </template>
+        
+  <!-- Modal: Datos del Beneficio -->
+  <AppModal
+    v-model="benefitDialogOpen"
+    title="Datos del Beneficio"
+    :subtitle="selectedBenefitParticipant ? `Especificaciones del beneficio para ${selectedBenefitParticipant.client_first_name} ${selectedBenefitParticipant.client_last_name || ''}` : 'Especificaciones del beneficio adjudicable'"
+    max-width="580"
+    persistent
+    :loading="isSubmittingBenefit"
+    submit-text="Guardar Beneficio"
+    submit-icon="mdi-check"
+    form-id="form-participant-benefit"
+    @submit="handleSaveBenefit"
+  >
+    <v-form id="form-participant-benefit" @submit.prevent="handleSaveBenefit">
+      <div v-if="isLoadingSchema" class="py-4 text-center">
+        <v-progress-circular indeterminate color="primary" size="28" />
+        <div class="text-caption text-medium-emphasis mt-2">Cargando campos del beneficio...</div>
+      </div>
+      <div v-else-if="contractMetadataSchema && Object.keys(contractMetadataSchema.fields || {}).length > 0">
+        <AppMetadataRenderer
+          :schema="contractMetadataSchema"
+          v-model="benefitFormData"
+          density="comfortable"
+          display-mode="flat"
+        />
+      </div>
+      <div v-else class="text-caption text-medium-emphasis py-4 text-center">
+        Este tipo de contrato no tiene campos dinámicos de beneficio configurados.
+      </div>
+    </v-form>
+  </AppModal>
+
+</template>
       </v-tooltip>
     </div>
 
@@ -688,17 +924,35 @@ onMounted(() => {
                   @click="openQuotesDialog(item)"
                 />
 
-                <!-- 3. Emitir Contrato Oficial -->
+                <!-- 3. Ver / Imprimir Contrato (PDF) -->
+                <v-list-item
+                  prepend-icon="mdi-file-pdf-box"
+                  title="Ver Contrato (PDF)"
+                  data-testid="menu-item-view-contract-pdf"
+                  :loading="isLoadingContractPdf[item.id]"
+                  @click="handleDownloadContractPdf(item)"
+                />
+
+                <!-- 4. Emitir Contrato Oficial -->
                 <v-list-item
                   prepend-icon="mdi-file-certificate-outline"
                   title="Emitir Contrato"
                   data-testid="menu-item-emit-contract"
+                  :loading="isEmittingContract"
                   @click="handleEmitContract(item)"
                 />
 
                 <v-divider class="my-1" />
 
-                <!-- 4. Modificar Participante -->
+                <!-- 4. Datos del Beneficio -->
+                <v-list-item
+                  prepend-icon="mdi-gift-outline"
+                  title="Datos del Beneficio"
+                  data-testid="menu-item-participant-benefit"
+                  @click="openBenefitDialog(item)"
+                />
+
+                <!-- 5. Modificar Participante -->
                 <v-list-item
                   prepend-icon="mdi-pencil-outline"
                   title="Editar Participante"
@@ -761,7 +1015,7 @@ onMounted(() => {
             v-model="participantFormData.referrer_id"
             :fetch-options="fetchPersonsOptions"
             :fetch-by-id="fetchPersonSingle"
-            label="Contacto Referente ($15) (Opcional)"
+            label="Contacto Referente"
             placeholder="Buscar persona referente..."
             value-key="id"
             label-key="name"
@@ -785,9 +1039,9 @@ onMounted(() => {
         </v-col>
       </v-row>
 
-      <!-- 3. Estado Inicial y Marca -->
+      <!-- 3. Estado Inicial -->
       <v-row density="compact" class="mb-1">
-        <v-col cols="12" sm="6">
+        <v-col cols="12">
           <v-select
             v-model="participantFormData.status"
             :items="[
@@ -803,78 +1057,78 @@ onMounted(() => {
             data-testid="select-participant-status"
           />
         </v-col>
+      </v-row>
+
+      <!-- 4. Condiciones Financieras (Personalización Opcional) -->
+      <v-divider class="my-3" />
+      <div class="text-subtitle-2 font-weight-bold text-medium-emphasis mb-2">
+        Condiciones Financieras (Opcional)
+      </div>
+      <v-row density="compact" class="mb-1">
+        <v-col cols="12" sm="6">
+          <AppPaginatedSelect
+            v-model="participantFormData.frequency_id"
+            :fetch-options="fetchFrequenciesOptions"
+            :fetch-by-id="fetchFrequencySingle"
+            label="Frecuencia de Pago"
+            :placeholder="`Por defecto: ${currentGroup?.frequency_name ? formatLocalized(currentGroup.frequency_name) : 'Grupo'}`"
+            :hint="`Hereda del grupo si se deja vacío (${currentGroup?.frequency_name ? formatLocalized(currentGroup.frequency_name) : 'N/A'})`"
+            persistent-hint
+            value-key="id"
+            label-key="name"
+            clearable
+            density="comfortable"
+            data-testid="select-participant-frequency"
+          />
+        </v-col>
         <v-col cols="12" sm="6">
           <v-text-field
-            v-model="participantFormData.vehicle_brand"
-            label="Marca del Vehículo *"
-            placeholder="Ej: Bera, Empire, etc."
+            v-model="participantFormData.frequency_base_date"
+            label="Fecha Base de Cobro"
+            type="date"
+            :hint="`Hereda del grupo: ${currentGroup?.frequency_base_date || 'N/A'}`"
+            persistent-hint
+            clearable
             variant="outlined"
             density="comfortable"
-            data-testid="input-participant-brand"
+            data-testid="input-participant-base-date"
           />
         </v-col>
       </v-row>
-
-      <!-- 4. Modelo y Año -->
       <v-row density="compact" class="mb-1">
-        <v-col cols="12" sm="8">
+        <v-col cols="12" sm="6">
           <v-text-field
-            v-model="participantFormData.vehicle_model"
-            label="Modelo del Vehículo *"
-            placeholder="Ej: SBR 150cc, Express 150..."
-            variant="outlined"
-            density="comfortable"
-            data-testid="input-participant-model"
-          />
-        </v-col>
-        <v-col cols="12" sm="4">
-          <v-text-field
-            v-model.number="participantFormData.vehicle_year"
-            label="Año *"
-            placeholder="Ej: 2024"
+            v-model.number="participantFormData.installment_amount"
+            label="Cuota Regular ($)"
             type="number"
-            min="1900"
-            max="2100"
+            min="1"
+            step="0.01"
+            :placeholder="currentGroup?.installment_amount ? `${currentGroup.installment_amount}` : ''"
+            :hint="`Hereda del grupo: ${Number(currentGroup?.installment_amount || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}`"
+            persistent-hint
+            clearable
             variant="outlined"
             density="comfortable"
-            data-testid="input-participant-year"
-          />
-        </v-col>
-      </v-row>
-
-      <!-- 5. Color y Serial de Chasis -->
-      <v-row density="compact" class="mb-1">
-        <v-col cols="12" sm="6">
-          <v-text-field
-            v-model="participantFormData.color"
-            label="Color Seleccionado"
-            placeholder="Ej: Azul, Rojo, Negro..."
-            variant="outlined"
-            density="comfortable"
-            data-testid="input-participant-color"
+            data-testid="input-participant-installment-amount"
           />
         </v-col>
         <v-col cols="12" sm="6">
           <v-text-field
-            v-model="participantFormData.chassis"
-            label="Serial de Chasis"
-            placeholder="Ej: 8X1234567890ABCD"
+            v-model.number="participantFormData.installment_count"
+            label="Total de Cuotas"
+            type="number"
+            min="1"
+            max="99"
+            :placeholder="currentGroup?.installment_count ? `${currentGroup.installment_count}` : ''"
+            :hint="`Hereda del grupo: ${currentGroup?.installment_count || 'N/A'} cuotas`"
+            persistent-hint
+            clearable
             variant="outlined"
             density="comfortable"
-            data-testid="input-participant-chassis"
+            data-testid="input-participant-installment-count"
           />
         </v-col>
       </v-row>
-
-      <!-- 6. Placa (Opcional) -->
-      <v-text-field
-        v-model="participantFormData.plate"
-        label="Placa de Rodaje (Opcional)"
-        placeholder="Ej: AB1C23D"
-        variant="outlined"
-        density="comfortable"
-        data-testid="input-participant-plate"
-      />
     </v-form>
   </AppModal>
 
@@ -963,31 +1217,41 @@ onMounted(() => {
                 {{ selectedParticipantDetails.referrer_first_name ? `${selectedParticipantDetails.referrer_first_name} ${selectedParticipantDetails.referrer_last_name || ''}` : 'Sin asignar' }}
               </td>
             </tr>
-            <tr>
-              <td class="font-weight-medium text-medium-emphasis">Vehículo Adjudicable</td>
-              <td class="text-high-emphasis">
-                {{ parsedParticipantMetadata.brand ? `${parsedParticipantMetadata.brand} ${parsedParticipantMetadata.model || ''}` : parsedParticipantMetadata.vehicle_model || 'No especificado' }}
-                {{ parsedParticipantMetadata.year ? `(${parsedParticipantMetadata.year})` : '' }}
-              </td>
-            </tr>
-            <tr v-if="parsedParticipantMetadata.color">
-              <td class="font-weight-medium text-medium-emphasis">Color</td>
-              <td class="text-high-emphasis">
-                {{ parsedParticipantMetadata.color }}
-              </td>
-            </tr>
-            <tr v-if="parsedParticipantMetadata.chassis_serial || parsedParticipantMetadata.chassis">
-              <td class="font-weight-medium text-medium-emphasis">Serial de Chasis</td>
-              <td class="text-high-emphasis font-family-monospace">
-                {{ parsedParticipantMetadata.chassis_serial || parsedParticipantMetadata.chassis }}
-              </td>
-            </tr>
-            <tr v-if="parsedParticipantMetadata.plate">
-              <td class="font-weight-medium text-medium-emphasis">Placa</td>
+            <tr v-if="selectedParticipantDetails.installment_amount">
+              <td class="font-weight-medium text-medium-emphasis">Cuota Regular</td>
               <td class="text-high-emphasis font-weight-bold">
-                {{ parsedParticipantMetadata.plate }}
+                ${{ Number(selectedParticipantDetails.installment_amount).toLocaleString('en-US', { minimumFractionDigits: 2 }) }}
               </td>
             </tr>
+            <tr v-if="selectedParticipantDetails.installment_count">
+              <td class="font-weight-medium text-medium-emphasis">Total de Cuotas</td>
+              <td class="text-high-emphasis">
+                {{ selectedParticipantDetails.installment_count }}
+              </td>
+            </tr>
+            <tr v-if="selectedParticipantDetails.frequency_base_date">
+              <td class="font-weight-medium text-medium-emphasis">Fecha Base de Cobro</td>
+              <td class="text-high-emphasis">
+                {{ selectedParticipantDetails.frequency_base_date }}
+              </td>
+            </tr>
+            <!-- Campos del Beneficio Dinámicos -->
+            <template v-if="contractMetadataSchema?.fields && Object.keys(contractMetadataSchema.fields).length > 0">
+              <tr v-for="(fieldDef, fieldKey) in contractMetadataSchema.fields" :key="fieldKey">
+                <td class="font-weight-medium text-medium-emphasis">
+                  {{ getFieldLabel(fieldDef) }}
+                </td>
+                <td class="text-high-emphasis">
+                  {{ parsedParticipantMetadata[fieldDef.code] || '-' }}
+                </td>
+              </tr>
+            </template>
+            <template v-else-if="Object.keys(parsedParticipantMetadata).length > 0">
+              <tr v-for="(val, key) in parsedParticipantMetadata" :key="key">
+                <td class="font-weight-medium text-medium-emphasis text-capitalize">{{ key }}</td>
+                <td class="text-high-emphasis">{{ val || '-' }}</td>
+              </tr>
+            </template>
           </tbody>
         </v-table>
       </div>
@@ -1009,6 +1273,19 @@ onMounted(() => {
         </div>
       </div>
     </div>
+    <template #prepend-actions>
+      <v-btn
+        v-if="selectedParticipantDetails"
+        variant="tonal"
+        color="primary"
+        prepend-icon="mdi-file-pdf-box"
+        class="text-none font-weight-bold"
+        :loading="isLoadingContractPdf[selectedParticipantDetails.id]"
+        @click="handleDownloadContractPdf(selectedParticipantDetails)"
+      >
+        Ver Contrato (PDF)
+      </v-btn>
+    </template>
   </AppModal>
 
   <!-- Modal: Confirmar Eliminación del Participante -->

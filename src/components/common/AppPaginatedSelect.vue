@@ -109,6 +109,20 @@ const itemTitleResolver = computed(() => {
   }
 })
 
+const normalizedModelValue = computed(() => {
+  if (props.modelValue === null || props.modelValue === undefined || props.modelValue === '') {
+    return props.modelValue
+  }
+  if (props.returnObject) return props.modelValue
+
+  const targetId = typeof props.modelValue === 'object' ? props.modelValue[props.valueKey] : props.modelValue
+  const match = options.value.find((o) => String(o[props.valueKey]) === String(targetId))
+  if (match) {
+    return match[props.valueKey]
+  }
+  return props.modelValue
+})
+
 async function loadPage(pageToLoad: number, query: string, isAppend: boolean = false): Promise<void> {
   if (!props.fetchOptions) return
 
@@ -146,11 +160,27 @@ async function loadPage(pageToLoad: number, query: string, isAppend: boolean = f
       }
       // Si hay una opción inicial preseleccionada y no está en la primera página, preservarla
       if (props.initialOption) {
-        const hasIt = combined.some((o) => o[props.valueKey] === props.initialOption[props.valueKey])
+        const hasIt = combined.some((o) => String(o[props.valueKey]) === String(props.initialOption[props.valueKey]))
         if (!hasIt) {
           combined.unshift(props.initialOption)
         }
       }
+
+      // Si hay una opción seleccionada actualmente (por modelValue) y no está en la página cargada, preservarla
+      const currentSelectedId = props.modelValue !== null && props.modelValue !== undefined
+        ? (typeof props.modelValue === 'object' ? props.modelValue[props.valueKey] : props.modelValue)
+        : null
+
+      if (currentSelectedId !== null) {
+        const hasCurrent = combined.some((o) => String(o[props.valueKey]) === String(currentSelectedId))
+        if (!hasCurrent) {
+          const existing = options.value.find((o) => String(o[props.valueKey]) === String(currentSelectedId))
+          if (existing) {
+            combined.unshift(existing)
+          }
+        }
+      }
+
       options.value = combined
     }
 
@@ -164,7 +194,9 @@ async function loadPage(pageToLoad: number, query: string, isAppend: boolean = f
 }
 
 function handleSearch(val: string | null): void {
+  if (!menuOpen.value) return
   const text = val || ''
+  searchQuery.value = text
   clearTimeout(debounceTimer)
   debounceTimer = setTimeout(() => {
     page.value = 1
@@ -216,14 +248,16 @@ function teardownObserver(): void {
 watch(
   () => props.modelValue,
   async (newVal) => {
-    if (!newVal) return
+    if (newVal === null || newVal === undefined || newVal === '') return
     const id = typeof newVal === 'object' ? newVal[props.valueKey] : newVal
-    const exists = options.value.some((o) => o[props.valueKey] === id)
+    const exists = options.value.some((o) => String(o[props.valueKey]) === String(id))
     if (!exists && props.fetchById) {
       try {
         const fetched = await props.fetchById(id)
         if (fetched) {
-          options.value = [fetched, ...options.value]
+          if (!options.value.some((o) => String(o[props.valueKey]) === String(fetched[props.valueKey]))) {
+            options.value = [fetched, ...options.value]
+          }
         }
       } catch {
         // Ignorar fallo de búsqueda individual
@@ -254,7 +288,7 @@ function onValueChange(val: any): void {
 
 <template>
   <v-autocomplete
-    :model-value="modelValue"
+    :model-value="normalizedModelValue"
     :items="options"
     :item-value="itemValueResolver"
     :item-title="itemTitleResolver"
@@ -278,10 +312,10 @@ function onValueChange(val: any): void {
   >
     <!-- Slot personalizado para cada ítem -->
     <template #item="{ props: itemProps, item }">
-      <v-list-item v-bind="itemProps" :title="itemTitleResolver(item.raw)">
-        <template #subtitle v-if="item.raw.description || item.raw.code">
+      <v-list-item v-bind="itemProps">
+        <template #subtitle v-if="item?.description || item?.raw?.description">
           <span class="text-caption text-medium-emphasis">
-            {{ item.raw.code ? `[${item.raw.code}] ` : '' }}{{ item.raw.description || '' }}
+            {{ item?.description || item?.raw?.description }}
           </span>
         </template>
       </v-list-item>
@@ -310,9 +344,7 @@ function onValueChange(val: any): void {
           Cargar más ({{ options.length }} de {{ totalCount }})
         </v-btn>
       </div>
-      <div v-else-if="options.length > 0 && totalCount > 0" class="pa-2 text-center text-caption text-disabled border-t">
-        Total de {{ options.length }} registros cargados
-      </div>
+
     </template>
 
     <template #no-data>

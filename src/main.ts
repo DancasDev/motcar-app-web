@@ -8,6 +8,7 @@ import AppChipFilter from './components/common/AppChipFilter.vue'
 import AppModal from './components/common/AppModal.vue'
 import AppMetadataRenderer from './components/common/AppMetadataRenderer.vue'
 import AppMetadataFileField from './components/common/AppMetadataFileField.vue'
+import AppPaginatedSelect from './components/common/AppPaginatedSelect.vue'
 
 const app = createApp(App)
 
@@ -20,6 +21,7 @@ app.component('AppChipFilter', AppChipFilter)
 app.component('AppModal', AppModal)
 app.component('AppMetadataRenderer', AppMetadataRenderer)
 app.component('AppMetadataFileField', AppMetadataFileField)
+app.component('AppPaginatedSelect', AppPaginatedSelect)
 
 app.mount('#app')
 
