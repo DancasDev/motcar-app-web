@@ -1,11 +1,13 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
+import { ENV } from '@/config/env'
 import {
   fetchAuditableEntities as apiFetchAuditableEntities,
   fetchStorageLockers as apiFetchStorageLockers,
   fetchLockerFiles as apiFetchLockerFiles,
   uploadFileToLocker as apiUploadFileToLocker,
   deleteLockerFile as apiDeleteLockerFile,
+  fetchStorageSignedUrl as apiFetchStorageSignedUrl,
   exportBinnacles as apiExportBinnacles,
   fetchMetadataSchemas as apiFetchMetadataSchemas,
   fetchMetadataFieldTypes as apiFetchMetadataFieldTypes,
@@ -130,6 +132,56 @@ export const useSystemStore = defineStore('system', () => {
   }
 
   /**
+   * Obtiene la URL accesible para visualizar o descargar un archivo.
+   * Si el casillero es privado, solicita una URL firmada (signed-url).
+   * Si el casillero es público, retorna directamente la URL pública.
+   */
+  async function resolveFileUrl(
+    lockerKey: string,
+    fileUrlOrPath: string
+  ): Promise<string> {
+    if (!fileUrlOrPath) return ''
+
+    // 1. Intentar determinar si el casillero es privado a través del listado de lockers
+    if (lockers.value.length === 0) {
+      try {
+        await loadLockers()
+      } catch {
+        // Fallback silencioso si no posee rol stg_admin para listar lockers
+      }
+    }
+
+    const locker = lockers.value.find((l) => l.locker_key === lockerKey)
+    const isKnownPrivate = locker
+      ? String(locker.is_private) === '1' || locker.is_private === true
+      : null
+
+    // Si sabemos con certeza que es público, retornar directamente la URL
+    if (isKnownPrivate === false) {
+      if (fileUrlOrPath.startsWith('http://') || fileUrlOrPath.startsWith('https://') || fileUrlOrPath.startsWith('blob:')) {
+        return fileUrlOrPath
+      }
+      return `${ENV.API_BASE_URL}/${fileUrlOrPath.replace(/^\//, '')}`
+    }
+
+    // Si es privado o desconocido, extraer filename y solicitar signed-url
+    const filename = fileUrlOrPath.split('?')[0].split('/').pop() || ''
+    if (!filename) return fileUrlOrPath
+
+    try {
+      const res = await apiFetchStorageSignedUrl(lockerKey, filename)
+      return res.signed_url
+    } catch (err: unknown) {
+      const errorObj = err as any
+      // Si la API indica que el locker no es privado, retornar la URL original
+      if (errorObj?.response?.data?.error === 'STORAGE_LOCKER_NOT_PRIVATE') {
+        return fileUrlOrPath
+      }
+      throw err
+    }
+  }
+
+  /**
    * Exporta las bitácoras a un archivo Excel y dispara la descarga en el navegador
    */
   async function exportBinnaclesToExcel(params?: DataQueryParams): Promise<void> {
@@ -247,6 +299,7 @@ export const useSystemStore = defineStore('system', () => {
     loadLockerFiles,
     uploadFile,
     deleteFile,
+    resolveFileUrl,
     exportBinnaclesToExcel,
     loadMetadataSchemas,
     loadFieldTypes,

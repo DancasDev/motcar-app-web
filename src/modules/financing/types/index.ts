@@ -83,6 +83,7 @@ export interface ParticipantItem {
   client_id: string | number
   client_first_name?: string
   client_last_name?: string
+  client_identification_value?: string | null
   referrer_id?: string | number
   referrer_first_name?: string
   referrer_last_name?: string
@@ -104,8 +105,8 @@ export interface ParticipantItem {
 
 export interface CreateParticipantPayload {
   client_id: number | string
-  referrer_id?: number | string
-  position?: number | string
+  referrer_id?: number | string | null
+  position?: number | string | null
   frequency_id?: number | string | null
   frequency_base_date?: string | null
   installment_amount?: number | string | null
@@ -116,8 +117,8 @@ export interface CreateParticipantPayload {
 }
 
 export interface UpdateParticipantPayload {
-  referrer_id?: number | string
-  position?: number | string
+  referrer_id?: number | string | null
+  position?: number | string | null
   frequency_id?: number | string | null
   frequency_base_date?: string | null
   installment_amount?: number | string | null
@@ -167,6 +168,7 @@ export interface ReceivableItem {
   client_id: string | number
   client_first_name?: string
   client_last_name?: string
+  client_identification_value?: string | null
   receivable_concept_id?: string | number
   concept_name?: string
   description?: string

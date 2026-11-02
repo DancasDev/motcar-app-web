@@ -179,6 +179,8 @@ export const ENDPOINTS = {
     STORAGE_LOCKER_FILES: (id: string | number) => `/v1/system/storage/lockers/${id}/files`,
     STORAGE_LOCKER_FILE_DELETE: (id: string | number, filename: string) =>
       `/v1/system/storage/lockers/${id}/files/${filename}`,
+    STORAGE_SIGNED_URL: (lockerKey: string, filename: string) =>
+      `/v1/system/storage/${lockerKey}/signed-url/${filename}`,
     STORAGE_DOWNLOAD: '/v1/system/storage/download',
 
     // Metadatos Dinámicos (EAV)

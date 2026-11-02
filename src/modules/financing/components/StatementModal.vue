@@ -2,9 +2,9 @@
 import { ref, computed, watch } from 'vue'
 import { useDisplay } from 'vuetify'
 import { useBranchesStore } from '@/modules/branches/stores/branches.store'
-import { fetchParticipantStatement } from '../api/financing.api'
+import { fetchParticipantStatement, generateParticipantReceivables } from '../api/financing.api'
 import type { ParticipantStatement, StatementInstallment } from '../types'
-import { money, waLink } from '@/utils/format'
+import { money } from '@/utils/format'
 
 interface Props {
   modelValue: boolean
@@ -15,6 +15,8 @@ interface Props {
 const props = defineProps<Props>()
 const emit = defineEmits<{
   (e: 'update:modelValue', val: boolean): void
+  (e: 'quotes-generated'): void
+  (e: 'message', text: string, color?: 'success' | 'error' | 'warning' | 'info'): void
 }>()
 
 const { smAndDown } = useDisplay()
@@ -26,26 +28,42 @@ const isOpen = computed({
 })
 
 const isLoading = ref(false)
+const isGenerating = ref(false)
+const isRefreshing = ref(false)
 const statement = ref<ParticipantStatement | null>(null)
 const errorMsg = ref<string | null>(null)
-const copySuccess = ref(false)
+
+const feedbackSnackbar = ref({
+  show: false,
+  text: '',
+  color: 'success'
+})
 
 const headers = [
-  { title: 'Cuota / Glosa', key: 'description', align: 'start' as const },
-  { title: 'Vencimiento', key: 'due_date', align: 'center' as const, width: '120px' },
+  { title: 'Descripción', key: 'description', align: 'start' as const },
+  { title: 'Vencimiento', key: 'due_date', align: 'center' as const, width: '130px' },
   { title: 'Monto', key: 'total_amount', align: 'end' as const, width: '100px' },
   { title: 'Abonado', key: 'paid_amount', align: 'end' as const, width: '100px' },
   { title: 'Saldo', key: 'pending_amount', align: 'end' as const, width: '100px' },
-  { title: 'Estado', key: 'status', align: 'center' as const, width: '120px' }
+  { title: 'Estado', key: 'status', align: 'center' as const, width: '110px' }
 ]
 
-async function loadStatement(): Promise<void> {
+const effectiveGroupId = computed(() => props.groupId || statement.value?.participant?.group_id)
+
+const canGenerateQuotes = computed(() => {
+  if (!statement.value?.participant) return false
+  return String(statement.value.participant.status) === '1'
+})
+
+async function loadStatement(silent: boolean = false): Promise<void> {
   if (!isOpen.value || !props.participantId || !branchesStore.activeBranchId) {
     statement.value = null
     return
   }
 
-  isLoading.value = true
+  if (!silent) {
+    isLoading.value = true
+  }
   errorMsg.value = null
   try {
     const res = await fetchParticipantStatement(
@@ -59,7 +77,57 @@ async function loadStatement(): Promise<void> {
     errorMsg.value = 'No se pudo cargar el estado de cuenta del participante.'
     statement.value = null
   } finally {
-    isLoading.value = false
+    if (!silent) {
+      isLoading.value = false
+    }
+  }
+}
+
+async function handleRefreshStatement(): Promise<void> {
+  isRefreshing.value = true
+  try {
+    await loadStatement(true)
+  } finally {
+    isRefreshing.value = false
+  }
+}
+
+async function handleGenerateQuotes(): Promise<void> {
+  const gId = effectiveGroupId.value
+  const pId = props.participantId || statement.value?.participant?.id
+  const bId = branchesStore.activeBranchId
+
+  if (!gId || !pId || !bId) return
+  if (!canGenerateQuotes.value) return
+
+  isGenerating.value = true
+  try {
+    const res = await generateParticipantReceivables(bId, gId, pId)
+    const count = res.data?.generated ?? 0
+    feedbackSnackbar.value = {
+      show: true,
+      text: `Cuotas generadas exitosamente (${count} ${count === 1 ? 'cuota' : 'cuotas'}).`,
+      color: 'success'
+    }
+    emit('quotes-generated')
+    emit('message', `Cuotas generadas exitosamente (${count} ${count === 1 ? 'cuota' : 'cuotas'}).`, 'success')
+    // Sincronizar inmediatamente la tabla y los totales
+    await loadStatement(true)
+  } catch (err: unknown) {
+    const errorObj = err as any
+    const msg =
+      errorObj?.response?.data?.messages?.error ||
+      errorObj?.response?.data?.message ||
+      errorObj?.response?.data?.error ||
+      (err instanceof Error ? err.message : 'Error al generar cuotas del participante.')
+    feedbackSnackbar.value = {
+      show: true,
+      text: msg,
+      color: 'error'
+    }
+    emit('message', msg, 'error')
+  } finally {
+    isGenerating.value = false
   }
 }
 
@@ -69,7 +137,6 @@ watch(() => [isOpen.value, props.participantId], ([open, pid]) => {
   } else {
     statement.value = null
     errorMsg.value = null
-    copySuccess.value = false
   }
 })
 
@@ -87,53 +154,13 @@ function getInstallmentStatusText(item: StatementInstallment): string {
   return 'Pendiente'
 }
 
-const whatsappMessageText = computed<string>(() => {
-  if (!statement.value) return ''
-  const s = statement.value
-  const lines: string[] = [
-    `*ESTADO DE CUENTA — MOTCAR*`,
-    `Cliente: *${s.client.name}* (${s.client.identification_type === '0' ? 'V' : 'E'}-${s.client.identification_value})`,
-    `Grupo: *${s.participant.group_name}* (Turno #${s.participant.position})`,
-    `---`,
-    `Total Comprometido: ${money(s.summary.total_committed)}`,
-    `Total Cancelado: ${money(s.summary.total_collected)}`,
-    `Saldo Pendiente: ${money(s.summary.total_pending)}`,
-    `Cuotas Pagadas: ${s.summary.installments_paid} de ${s.summary.installments_total}`,
-  ]
-
-  if (s.summary.overdue_amount > 0) {
-    lines.push(`*Monto Vencido en Mora: ${money(s.summary.overdue_amount)}* (${s.summary.installments_overdue} cuotas)`)
-  } else {
-    lines.push(`Estado: *Al Día*`)
+const nextPendingDueDate = computed<string>(() => {
+  if (!statement.value?.installments || statement.value.installments.length === 0) {
+    return 'N/A'
   }
-
-  if (s.participant.is_awarded) {
-    lines.push(`Beneficio Entregado: *Sí*`)
-  }
-
-  lines.push(`---`)
-  lines.push(`Para conciliar o reportar pagos, responda a este mensaje con el comprobante.`)
-
-  return lines.join('\n')
+  const pending = statement.value.installments.find(i => Number(i.pending_amount) > 0)
+  return pending ? pending.due_date : 'Al día'
 })
-
-const clientWaHref = computed<string | null>(() => {
-  if (!statement.value?.client.phone) return null
-  return waLink(statement.value.client.phone, whatsappMessageText.value)
-})
-
-async function copySummaryToClipboard(): Promise<void> {
-  if (!whatsappMessageText.value) return
-  try {
-    await navigator.clipboard.writeText(whatsappMessageText.value)
-    copySuccess.value = true
-    setTimeout(() => {
-      copySuccess.value = false
-    }, 3000)
-  } catch (err) {
-    console.error('Error al copiar al portapapeles:', err)
-  }
-}
 </script>
 
 <template>
@@ -149,7 +176,7 @@ async function copySummaryToClipboard(): Promise<void> {
       <v-toolbar color="primary" density="compact" class="px-2">
         <v-toolbar-title class="text-subtitle-1 font-weight-bold d-flex align-center ga-2">
           <v-icon size="20">mdi-file-document-outline</v-icon>
-          <span>Estado de Cuenta / Cartola</span>
+          <span>Estado de cuenta</span>
         </v-toolbar-title>
         <v-spacer />
         <v-btn icon="mdi-close" variant="text" size="small" @click="isOpen = false" />
@@ -159,7 +186,7 @@ async function copySummaryToClipboard(): Promise<void> {
         <!-- Estado de Carga -->
         <div v-if="isLoading" class="text-center py-10" data-testid="statement-loading">
           <v-progress-circular indeterminate color="primary" size="48" class="mb-3" />
-          <div class="text-body-2 text-medium-emphasis">Cargando cartola del participante...</div>
+          <div class="text-body-2 text-medium-emphasis">Cargando estado de cuenta...</div>
         </div>
 
         <!-- Estado de Error -->
@@ -190,11 +217,9 @@ async function copySummaryToClipboard(): Promise<void> {
                 <div class="text-body-2 text-medium-emphasis d-flex flex-wrap align-center ga-2">
                   <span>Grupo: <strong>{{ statement.participant.group_name }}</strong></span>
                   <span>&bull;</span>
-                  <span>Turno: <strong>#{{ statement.participant.position }}</strong></span>
-                  <span v-if="statement.client.phone">&bull;</span>
-                  <span v-if="statement.client.phone" class="text-caption font-mono">
-                    {{ statement.client.phone }}
-                  </span>
+                  <span>Turno: <strong>{{ statement.participant.position ? `#${statement.participant.position}` : 'N/A' }}</strong></span>
+                  <span>&bull;</span>
+                  <span>Próx. Vencimiento: <strong>{{ nextPendingDueDate }}</strong></span>
                 </div>
               </v-col>
 
@@ -238,83 +263,99 @@ async function copySummaryToClipboard(): Promise<void> {
             </v-row>
           </v-card>
 
-          <!-- 4 Métricas Financieras Clave -->
+          <!-- Tarjetas de Métricas Resumen -->
           <v-row density="compact" class="mb-4">
             <v-col cols="6" sm="3">
               <v-card elevation="0" rounded="lg" class="border pa-3 text-center bg-white h-100">
-                <div class="text-caption text-medium-emphasis text-uppercase">Comprometido</div>
+                <div class="d-flex align-center justify-center ga-1 mb-1">
+                  <v-icon icon="mdi-cash-multiple" size="18" color="medium-emphasis" />
+                  <span class="text-caption font-weight-bold text-medium-emphasis text-uppercase" style="letter-spacing: 0.04em;">
+                    Comprometido
+                  </span>
+                </div>
                 <div class="text-subtitle-1 font-weight-bold text-high-emphasis" data-testid="statement-total-committed">
                   {{ money(statement.summary.total_committed) }}
                 </div>
-                <div class="text-caption text-medium-emphasis">
-                  {{ statement.summary.installments_total }} cuotas
-                </div>
               </v-card>
             </v-col>
             <v-col cols="6" sm="3">
               <v-card elevation="0" rounded="lg" class="border pa-3 text-center bg-white h-100">
-                <div class="text-caption text-medium-emphasis text-uppercase">Cancelado</div>
-                <div class="text-subtitle-1 font-weight-bold text-success" data-testid="statement-total-collected">
+                <div class="d-flex align-center justify-center ga-1 mb-1">
+                  <v-icon icon="mdi-cash-check" size="18" color="medium-emphasis" />
+                  <span class="text-caption font-weight-bold text-medium-emphasis text-uppercase" style="letter-spacing: 0.04em;">
+                    Cancelado
+                  </span>
+                </div>
+                <div class="text-subtitle-1 font-weight-bold text-high-emphasis" data-testid="statement-total-collected">
                   {{ money(statement.summary.total_collected) }}
                 </div>
-                <div class="text-caption text-success font-weight-medium">
-                  {{ statement.summary.installments_paid }} pagadas
-                </div>
               </v-card>
             </v-col>
             <v-col cols="6" sm="3">
               <v-card elevation="0" rounded="lg" class="border pa-3 text-center bg-white h-100">
-                <div class="text-caption text-medium-emphasis text-uppercase">Saldo Pendiente</div>
-                <div class="text-subtitle-1 font-weight-bold text-primary" data-testid="statement-total-pending">
+                <div class="d-flex align-center justify-center ga-1 mb-1">
+                  <v-icon icon="mdi-cash-clock" size="18" color="medium-emphasis" />
+                  <span class="text-caption font-weight-bold text-medium-emphasis text-uppercase" style="letter-spacing: 0.04em;">
+                    Saldo Pendiente
+                  </span>
+                </div>
+                <div class="text-subtitle-1 font-weight-bold text-high-emphasis" data-testid="statement-total-pending">
                   {{ money(statement.summary.total_pending) }}
                 </div>
-                <div class="text-caption text-medium-emphasis">
-                  {{ statement.summary.installments_pending }} pendientes
-                </div>
               </v-card>
             </v-col>
             <v-col cols="6" sm="3">
               <v-card elevation="0" rounded="lg" class="border pa-3 text-center bg-white h-100">
-                <div class="text-caption text-error font-weight-bold text-uppercase">En Mora</div>
-                <div class="text-subtitle-1 font-weight-bold text-error" data-testid="statement-overdue-amount">
-                  {{ money(statement.summary.overdue_amount) }}
+                <div class="d-flex align-center justify-center ga-1 mb-1">
+                  <v-icon icon="mdi-alert-circle-outline" size="18" color="medium-emphasis" />
+                  <span class="text-caption font-weight-bold text-medium-emphasis text-uppercase" style="letter-spacing: 0.04em;">
+                    En Mora
+                  </span>
                 </div>
-                <div class="text-caption text-error">
-                  {{ statement.summary.installments_overdue }} vencidas
+                <div class="text-subtitle-1 font-weight-bold text-high-emphasis" data-testid="statement-overdue-amount">
+                  {{ money(statement.summary.overdue_amount) }}
                 </div>
               </v-card>
             </v-col>
           </v-row>
 
-          <!-- Acciones Rápidas para WhatsApp -->
+          <!-- Barra de Título del Cronograma y Acción Generar Cuota -->
           <div class="d-flex flex-wrap align-center justify-space-between ga-2 mb-3">
-            <div class="text-subtitle-2 font-weight-bold text-high-emphasis">
-              Cronograma de Cuotas y Pagos
-            </div>
             <div class="d-flex align-center ga-2">
-              <v-btn
-                variant="outlined"
-                color="secondary"
-                size="small"
-                prepend-icon="mdi-content-copy"
-                data-testid="statement-copy-wa-btn"
-                @click="copySummaryToClipboard"
+              <span class="text-subtitle-2 font-weight-bold text-high-emphasis">
+                Cronograma de Cuotas y Pagos
+              </span>
+              <v-chip
+                v-if="statement.installments && statement.installments.length > 0"
+                size="x-small"
+                variant="tonal"
+                color="primary"
+                class="font-weight-medium"
               >
-                {{ copySuccess ? '¡Copiado!' : 'Copiar Resumen' }}
-              </v-btn>
-              <v-btn
-                v-if="clientWaHref"
-                :href="clientWaHref"
-                target="_blank"
-                rel="noopener"
-                color="success"
-                size="small"
-                variant="flat"
-                prepend-icon="mdi-whatsapp"
-                data-testid="statement-open-wa-btn"
+                {{ statement.installments.length }} {{ statement.installments.length === 1 ? 'cuota' : 'cuotas' }}
+              </v-chip>
+            </div>
+
+            <div class="d-flex align-center ga-2">
+              <v-tooltip
+                text="Recargar cronograma"
+                location="top"
+                color="#1E293B"
               >
-                Enviar WhatsApp
-              </v-btn>
+                <template #activator="{ props: tooltipProps }">
+                  <v-btn
+                    v-bind="tooltipProps"
+                    icon="mdi-refresh"
+                    variant="flat"
+                    color="white"
+                    size="small"
+                    class="border rounded-circle flex-shrink-0"
+                    :loading="isRefreshing"
+                    data-testid="statement-refresh-btn"
+                    @click="handleRefreshStatement"
+                  />
+                </template>
+              </v-tooltip>
             </div>
           </div>
 
@@ -329,6 +370,30 @@ async function copySummaryToClipboard(): Promise<void> {
             :items-per-page="50"
             hover
           >
+            <!-- Slot para cuando no hay cuotas -->
+            <template #no-data>
+              <div class="text-center py-8">
+                <v-icon icon="mdi-calculator-variant-outline" size="44" color="medium-emphasis" class="mb-2" />
+                <div class="text-body-2 font-weight-medium text-high-emphasis mb-1">
+                  No hay cuotas generadas
+                </div>
+                <div class="text-caption text-medium-emphasis mb-3">
+                  Este participante aún no tiene cuotas registradas en su cronograma.
+                </div>
+                <v-btn
+                  v-if="canGenerateQuotes"
+                  color="primary"
+                  variant="flat"
+                  size="small"
+                  prepend-icon="mdi-calculator"
+                  :loading="isGenerating"
+                  @click="handleGenerateQuotes"
+                >
+                  Generar cuota
+                </v-btn>
+              </div>
+            </template>
+
             <!-- Cuota / Glosa con detalle de pagos -->
             <template #[`item.description`]="{ item }">
               <div>
@@ -343,7 +408,9 @@ async function copySummaryToClipboard(): Promise<void> {
 
             <!-- Vencimiento -->
             <template #[`item.due_date`]="{ item }">
-              <span class="text-caption font-mono">{{ item.due_date }}</span>
+              <span class="text-caption font-mono font-weight-medium text-high-emphasis">
+                {{ item.due_date }}
+              </span>
             </template>
 
             <!-- Monto -->
@@ -382,9 +449,22 @@ async function copySummaryToClipboard(): Promise<void> {
 
       <v-divider />
 
-      <v-card-actions class="pa-3 bg-grey-lighten-5 justify-end">
+      <v-card-actions class="pa-3 bg-grey-lighten-5 justify-start">
         <v-btn variant="plain" @click="isOpen = false">Cerrar</v-btn>
       </v-card-actions>
+
+      <!-- Snackbar de Notificaciones Internas -->
+      <v-snackbar
+        v-model="feedbackSnackbar.show"
+        :color="feedbackSnackbar.color"
+        timeout="3500"
+        location="top"
+      >
+        <div class="d-flex align-center ga-2">
+          <v-icon :icon="feedbackSnackbar.color === 'success' ? 'mdi-check-circle-outline' : 'mdi-alert-circle-outline'" />
+          <span>{{ feedbackSnackbar.text }}</span>
+        </div>
+      </v-snackbar>
     </v-card>
   </v-dialog>
 </template>

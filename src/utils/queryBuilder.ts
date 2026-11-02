@@ -24,6 +24,11 @@ export interface QueryBuilderConfig {
    * Proyección de campos específicos a devolver (separados por comas)
    */
   fields?: string[]
+
+  /**
+   * Ordenamiento por defecto si el usuario no ha seleccionado una columna
+   */
+  defaultOrder?: DqbOrder
 }
 
 /**
@@ -54,6 +59,8 @@ export function buildDqbParams(
     if (Object.keys(orderObj).length > 0) {
       params.order = JSON.stringify(orderObj)
     }
+  } else if (config.defaultOrder && Object.keys(config.defaultOrder).length > 0) {
+    params.order = JSON.stringify(config.defaultOrder)
   }
 
   // 3. Filtros (filters)

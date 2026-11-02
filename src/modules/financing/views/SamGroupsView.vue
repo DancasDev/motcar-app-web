@@ -166,7 +166,8 @@ const groupsQuery = useDataQuery<SamGroupItem>(
   },
   {
     initialItemsPerPage: 10,
-    searchFields: ['name']
+    searchFields: ['name'],
+    defaultOrder: { id: 'DESC' }
   }
 )
 
@@ -179,9 +180,9 @@ const groupHeaders = [
 ]
 
 const statusOptions = [
-  { text: 'En Formación', value: '0' },
-  { text: 'Activo', value: '1' },
-  { text: 'Cerrado', value: '2' }
+  { text: 'En Formación', title: 'En Formación', value: '0' },
+  { text: 'Activo', title: 'Activo', value: '1' },
+  { text: 'Cerrado', title: 'Cerrado', value: '2' }
 ]
 
 function handleStatusFilterChange(dqbFilter: DqbFilterTuple[] | null): void {
@@ -442,7 +443,7 @@ onMounted(async () => {
         data-testid="btn-create-group"
         @click="openCreateGroupDialog"
       >
-        Nuevo Grupo
+        Registrar
       </v-btn>
     </div>
 
@@ -622,7 +623,7 @@ onMounted(async () => {
                 <!-- 4. Modificación -->
                 <v-list-item
                   prepend-icon="mdi-pencil-outline"
-                  title="Editar Grupo"
+                  title="Editar"
                   data-testid="menu-item-edit"
                   @click="openEditGroupDialog(item)"
                 />
@@ -646,12 +647,12 @@ onMounted(async () => {
   <!-- Modal: Crear / Editar Grupo -->
   <AppModal
     v-model="groupDialogOpen"
-    :title="editingGroupId ? 'Editar Grupo' : 'Nuevo Grupo'"
+    :title="editingGroupId ? 'Editar' : 'Registrar'"
     :subtitle="editingGroupId ? 'Modifica los parámetros y condiciones del grupo' : 'Configuración financiera y cuotas del nuevo grupo'"
     max-width="580"
     persistent
     :loading="isSubmittingGroup"
-    :submit-text="editingGroupId ? 'Guardar Cambios' : 'Crear Grupo'"
+    :submit-text="editingGroupId ? 'Actualizar' : 'Registrar'"
     :submit-icon="editingGroupId ? 'mdi-check' : 'mdi-plus'"
     form-id="form-create-group"
     @submit="handleSaveGroup"
@@ -724,7 +725,7 @@ onMounted(async () => {
       </v-row>
 
       <v-row density="compact" class="mb-1">
-        <v-col cols="12" :sm="!editingGroupId ? 6 : 12">
+        <v-col cols="12" sm="6">
           <v-text-field
             v-model.number="groupFormData.participant_max"
             label="Capacidad Máxima"
@@ -746,6 +747,18 @@ onMounted(async () => {
             data-testid="input-group-base-date"
           />
         </v-col>
+        <v-col v-else cols="12" sm="6">
+          <v-select
+            v-model="groupFormData.status"
+            :items="statusOptions"
+            item-title="title"
+            item-value="value"
+            label="Estado del Grupo *"
+            variant="outlined"
+            density="comfortable"
+            data-testid="select-group-status"
+          />
+        </v-col>
       </v-row>
     </v-form>
   </AppModal>
@@ -757,7 +770,7 @@ onMounted(async () => {
     subtitle="Información completa de auditoría y configuración del grupo"
     max-width="640"
     cancel-text="Cerrar"
-    submit-text="Editar Grupo"
+    submit-text="Editar"
     submit-icon="mdi-pencil"
     @submit="selectedGroupDetails && (detailsDialogOpen = false, openEditGroupDialog(selectedGroupDetails))"
   >
@@ -869,11 +882,11 @@ onMounted(async () => {
   <!-- Modal: Confirmar Eliminación -->
   <AppModal
     v-model="deleteDialogOpen"
-    title="Eliminar Grupo"
+    title="Eliminar"
     subtitle="Esta acción moverá el grupo a la papelera del sistema"
     max-width="460"
     :loading="isDeletingGroup"
-    submit-text="Sí, Eliminar"
+    submit-text="Eliminar"
     submit-color="error"
     submit-icon="mdi-trash-can"
     @submit="handleConfirmDelete"

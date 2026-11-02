@@ -34,7 +34,7 @@ const props = withDefaults(defineProps<Props>(), {
   modelValue: null,
   label: 'Subir archivo',
   hint: '',
-  uploadUrl: '/v1/system/storage/contracts/documents',
+  uploadUrl: '/v1/system/storage/images/contracts/deliveries',
   responseKey: 'url',
   accept: null,
   maxSize: 5120, // 5 MB por defecto
@@ -51,6 +51,8 @@ const emit = defineEmits<{
 }>()
 
 const fileInputRef = ref<HTMLInputElement | null>(null)
+const replaceFileInputRef = ref<HTMLInputElement | null>(null)
+const replacingIndex = ref<number | null>(null)
 const isUploading = ref(false)
 const uploadProgress = ref(0)
 const errorMessage = ref<string | null>(null)
@@ -60,7 +62,19 @@ const isDragOver = ref(false)
 const filesList = computed<string[]>(() => {
   if (!props.modelValue) return []
   if (Array.isArray(props.modelValue)) return props.modelValue.filter(Boolean)
-  return [props.modelValue]
+  if (typeof props.modelValue === 'string') {
+    const trimmed = props.modelValue.trim()
+    if (trimmed.startsWith('[') && trimmed.endsWith(']')) {
+      try {
+        const parsed = JSON.parse(trimmed)
+        if (Array.isArray(parsed)) return parsed.filter(Boolean)
+      } catch {
+        // fallback
+      }
+    }
+    return [props.modelValue]
+  }
+  return [String(props.modelValue)]
 })
 
 const isSingleFilePresent = computed(() => {
@@ -121,7 +135,7 @@ function validateFile(file: File): string | null {
 async function uploadSingleFile(file: File): Promise<string> {
   const resolvedUrl = props.uploadUrl?.startsWith('http')
     ? props.uploadUrl
-    : `${props.uploadUrl?.startsWith('/') ? '' : '/'}${props.uploadUrl || 'v1/system/storage/contracts/documents'}`
+    : `${props.uploadUrl?.startsWith('/') ? '' : '/'}${props.uploadUrl || 'v1/system/storage/images/contracts/deliveries'}`
 
   const formData = new FormData()
   formData.append('file', file)
@@ -190,7 +204,12 @@ async function handleFilesSelected(files: FileList | null): Promise<void> {
     }
   } catch (err: unknown) {
     console.error('[AppMetadataFileField] Error uploading file:', err)
-    errorMessage.value = err instanceof Error ? err.message : 'Error al subir el archivo.'
+    const errorObj = err as any
+    const apiMsg =
+      errorObj?.response?.data?.messages?.error ||
+      errorObj?.response?.data?.message ||
+      errorObj?.response?.data?.error
+    errorMessage.value = apiMsg || (err instanceof Error ? err.message : 'Error al subir el archivo.')
   } finally {
     isUploading.value = false
     uploadProgress.value = 0
@@ -224,6 +243,50 @@ function removeFile(index: number): void {
     emit('change', null)
   }
 }
+
+function triggerReplaceFile(index: number): void {
+  if (props.disabled || props.readonly || isUploading.value) return
+  replacingIndex.value = index
+  errorMessage.value = null
+  replaceFileInputRef.value?.click()
+}
+
+async function onReplaceFileChange(e: Event): Promise<void> {
+  const target = e.target as HTMLInputElement
+  const files = target.files
+  if (!files || files.length === 0 || replacingIndex.value === null) return
+
+  const file = files[0]
+  const error = validateFile(file)
+  if (error) {
+    errorMessage.value = error
+    target.value = ''
+    replacingIndex.value = null
+    return
+  }
+
+  isUploading.value = true
+  uploadProgress.value = 0
+  try {
+    const newUrl = await uploadSingleFile(file)
+    const updated = [...filesList.value]
+    updated[replacingIndex.value] = newUrl
+    emit('update:modelValue', updated)
+    emit('change', updated)
+  } catch (err: unknown) {
+    console.error('[AppMetadataFileField] Error replacing file:', err)
+    const errorObj = err as any
+    const apiMsg =
+      errorObj?.response?.data?.messages?.error ||
+      errorObj?.response?.data?.message ||
+      errorObj?.response?.data?.error
+    errorMessage.value = apiMsg || (err instanceof Error ? err.message : 'Error al reemplazar el archivo.')
+  } finally {
+    isUploading.value = false
+    replacingIndex.value = null
+    target.value = ''
+  }
+}
 </script>
 
 <template>
@@ -246,6 +309,16 @@ function removeFile(index: number): void {
           :multiple="multiple"
           :disabled="disabled || readonly"
           @change="onFileChange"
+        />
+
+        <!-- Input HTML oculto para reemplazar un archivo específico -->
+        <input
+          ref="replaceFileInputRef"
+          type="file"
+          class="d-none"
+          :accept="accept || undefined"
+          :disabled="disabled || readonly"
+          @change="onReplaceFileChange"
         />
 
         <!-- Etiqueta superior del campo -->
@@ -372,21 +445,37 @@ function removeFile(index: number): void {
             class="border rounded-lg pa-2 bg-white d-flex align-center justify-space-between multi-file-item"
           >
             <div class="d-flex align-center overflow-hidden mr-2">
-              <v-icon
-                :icon="isImage(url) ? 'mdi-image-outline' : 'mdi-file-document-outline'"
-                size="small"
-                color="primary"
-                class="mr-2"
-              />
-              <span class="text-caption text-truncate font-weight-medium multi-file-name">
-                {{ getFilename(url) }}
-              </span>
+              <template v-if="isImage(url)">
+                <v-avatar rounded="sm" size="36" class="mr-2 border bg-grey-lighten-4 flex-shrink-0">
+                  <v-img :src="url" cover>
+                    <template #placeholder>
+                      <div class="d-flex align-center justify-center fill-height">
+                        <v-progress-circular indeterminate size="14" color="primary" />
+                      </div>
+                    </template>
+                  </v-img>
+                </v-avatar>
+              </template>
+              <template v-else>
+                <v-avatar color="primary" variant="tonal" rounded="sm" size="36" class="mr-2 flex-shrink-0">
+                  <v-icon icon="mdi-file-document-outline" size="20" />
+                </v-avatar>
+              </template>
+              <div class="overflow-hidden">
+                <div class="text-caption text-truncate font-weight-medium multi-file-name">
+                  {{ getFilename(url) }}
+                </div>
+                <div class="text-caption text-disabled" style="font-size: 11px;">
+                  Fotografía #{{ idx + 1 }}
+                </div>
+              </div>
             </div>
 
-            <div class="d-flex align-center ga-1">
+            <div class="d-flex align-center ga-1 flex-shrink-0">
               <v-btn
                 :href="url"
                 target="_blank"
+                rel="noopener noreferrer"
                 icon="mdi-open-in-new"
                 size="x-small"
                 variant="text"
@@ -396,7 +485,17 @@ function removeFile(index: number): void {
               />
               <v-btn
                 v-if="!readonly && !disabled"
-                icon="mdi-close"
+                icon="mdi-swap-horizontal"
+                size="x-small"
+                variant="text"
+                color="primary"
+                title="Reemplazar esta fotografía"
+                class="btn-replace-multi-file"
+                @click="triggerReplaceFile(idx)"
+              />
+              <v-btn
+                v-if="!readonly && !disabled"
+                icon="mdi-delete-outline"
                 size="x-small"
                 variant="text"
                 color="error"

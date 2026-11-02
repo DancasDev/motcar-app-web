@@ -1,11 +1,13 @@
 import { apiClient } from '@/api/client'
 import { ENDPOINTS } from '@/api/endpoints'
+import { ENV } from '@/config/env'
 import type { DataQueryParams, PaginatedResponse } from '@/types/query'
 import type { ApiResponse } from '@/types/api'
 import type {
   SystemBinnacleItem,
   AuditableEntityOption,
   StorageLockerItem,
+  StorageSignedUrlResponse,
   LockerFileItem,
   UploadFileResponse,
   MetadataSchemaItem,
@@ -133,6 +135,49 @@ export async function deleteLockerFile(
     ENDPOINTS.SYSTEM.STORAGE_LOCKER_FILE_DELETE(lockerId, encodeURIComponent(filename))
   )
   return response.data
+}
+
+export async function fetchStorageSignedUrl(
+  lockerKey: string,
+  filename: string
+): Promise<StorageSignedUrlResponse> {
+  const response = await apiClient.get<StorageSignedUrlResponse>(
+    ENDPOINTS.SYSTEM.STORAGE_SIGNED_URL(lockerKey, encodeURIComponent(filename))
+  )
+  return response.data
+}
+
+/**
+ * Resuelve la URL accesible para visualizar o descargar un archivo del almacenamiento.
+ * - Si el casillero es privado: solicita a la API la URL firmada (S3, local o cualquier driver).
+ * - Si el casillero es público: retorna directamente la URL pública accesible.
+ */
+export async function resolveStorageFileUrl(
+  lockerKey: string,
+  fileUrlOrPath: string
+): Promise<string> {
+  if (!fileUrlOrPath) return ''
+
+  const filename = fileUrlOrPath.split('?')[0].split('/').pop() || ''
+  if (!filename) return fileUrlOrPath
+
+  try {
+    const res = await fetchStorageSignedUrl(lockerKey, filename)
+    return res.signed_url
+  } catch (err: unknown) {
+    const errorObj = err as any
+    if (errorObj?.response?.data?.error === 'STORAGE_LOCKER_NOT_PRIVATE') {
+      if (
+        fileUrlOrPath.startsWith('http://') ||
+        fileUrlOrPath.startsWith('https://') ||
+        fileUrlOrPath.startsWith('blob:')
+      ) {
+        return fileUrlOrPath
+      }
+      return `${ENV.API_BASE_URL}/${fileUrlOrPath.replace(/^\//, '')}`
+    }
+    throw err
+  }
 }
 
 // ---------------------------------------------------------------------

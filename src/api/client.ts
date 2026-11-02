@@ -69,7 +69,12 @@ apiClient.interceptors.response.use(
 
       // 4. Token caducado o revocado: limpiar sesión y dirigir a login
       if (!errorCode || isSessionExpiredError(errorCode)) {
-        localStorage.removeItem(APP_CONFIG.TOKEN_KEY)
+        try {
+          const { useAuthStore } = await import('@/modules/auth/stores/auth.store')
+          useAuthStore().clearSession()
+        } catch {
+          localStorage.removeItem(APP_CONFIG.TOKEN_KEY)
+        }
         if (router.currentRoute.value.path !== '/login') {
           const currentPath = router.currentRoute.value.fullPath
           router.push({

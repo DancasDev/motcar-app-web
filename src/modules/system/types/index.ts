@@ -47,9 +47,18 @@ export interface StorageLockerItem {
   allowed_mimes?: string | string[]
   max_size?: number
   optimize_file?: string | number | boolean
+  is_private?: string | number | boolean
   is_disabled?: string | number | boolean
   created_at?: string
   updated_at?: string
+}
+
+/**
+ * Respuesta para URL prefirmada de casillero privado
+ */
+export interface StorageSignedUrlResponse {
+  signed_url: string
+  expires_at: number
 }
 
 /**

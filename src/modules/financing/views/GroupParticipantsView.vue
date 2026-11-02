@@ -10,14 +10,13 @@ import {
   updateParticipant as apiUpdateParticipant,
   deleteParticipant as apiDeleteParticipant,
   fetchSamGroupById,
-  fetchPaymentFrequencies,
-  emitContract,
-  fetchContractPdf
+  fetchPaymentFrequencies
 } from '../api/financing.api'
 import type {
   SamGroupItem,
   ParticipantItem,
-  PaymentFrequencyItem
+  PaymentFrequencyItem,
+  UpdateParticipantPayload
 } from '../types'
 import type { DqbFilterTuple } from '@/types/query'
 import AppPaginatedSelect, { type PaginatedQueryParams } from '@/components/common/AppPaginatedSelect.vue'
@@ -26,6 +25,7 @@ import { fetchMetadataSchemaRender } from '@/modules/system/api/system.api'
 import { fetchPersons, fetchPersonById } from '@/modules/catalogs/api/catalogs.api'
 import type { PersonItem } from '@/modules/catalogs/types'
 import StatementModal from '../components/StatementModal.vue'
+import ParticipantContractModal from '../components/ParticipantContractModal.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -70,14 +70,6 @@ async function loadContractMetadataSchema(): Promise<void> {
 }
 
 
-function getFieldLabel(fieldDef: any): string {
-  if (!fieldDef) return ''
-  const attr = typeof fieldDef.attribute_values === 'string'
-    ? (() => { try { return JSON.parse(fieldDef.attribute_values) } catch { return {} } })()
-    : (fieldDef.attribute_values || {})
-  return attr.label || fieldDef.name || fieldDef.code
-}
-
 async function loadGroupDetails(): Promise<void> {
   if (!branchesStore.activeBranchId || !groupId.value) return
   isLoadingGroup.value = true
@@ -110,8 +102,7 @@ const participantsQuery = useDataQuery<ParticipantItem>(
 
 const participantHeaders = [
   { title: 'Turno', key: 'position', align: 'center' as const, sortable: true, width: '100px' },
-  { title: 'Cliente Suscriptor', key: 'client', align: 'start' as const, sortable: false },
-  { title: 'Referente', key: 'referrer', align: 'start' as const, sortable: false, width: '180px' },
+  { title: 'Cliente', key: 'client', align: 'start' as const, sortable: false },
   { title: 'Estado', key: 'status', align: 'center' as const, sortable: true, width: '120px' },
   { title: 'Morosidad', key: 'is_overdue', align: 'center' as const, sortable: true, width: '110px' },
   { title: 'Adjudicación', key: 'awarded_at', align: 'center' as const, sortable: true, width: '140px' },
@@ -140,10 +131,6 @@ function handleStatusFilterChange(dqbFilter: DqbFilterTuple[] | null): void {
 const participantDialogOpen = ref(false)
 const isSubmittingParticipant = ref(false)
 const editingParticipantId = ref<string | number | null>(null)
-
-// Modal de detalles
-const detailsDialogOpen = ref(false)
-const selectedParticipantDetails = ref<ParticipantItem | null>(null)
 
 // Modal de eliminación
 const deleteDialogOpen = ref(false)
@@ -225,9 +212,26 @@ const benefitDialogOpen = ref(false)
 const selectedBenefitParticipant = ref<ParticipantItem | null>(null)
 const isSubmittingBenefit = ref(false)
 const benefitFormData = ref<Record<string, any>>({})
+const benefitAwardedAt = ref<string>('')
+
+const isBenefitUpdate = computed(() => {
+  if (selectedBenefitParticipant.value?.awarded_at) return true
+  const b = selectedBenefitParticipant.value?.benefit_metadata
+  if (!b) return false
+  if (typeof b === 'object' && Object.keys(b).length > 0) return true
+  if (typeof b === 'string') {
+    try {
+      return Object.keys(JSON.parse(b)).length > 0
+    } catch {
+      return false
+    }
+  }
+  return false
+})
 
 function openBenefitDialog(participant: ParticipantItem): void {
   selectedBenefitParticipant.value = participant
+  benefitAwardedAt.value = participant.awarded_at || ''
   let metadata: Record<string, any> = {}
   if (typeof participant.benefit_metadata === 'string') {
     try {
@@ -255,32 +259,48 @@ async function handleSaveBenefit(): Promise<void> {
 
   isSubmittingBenefit.value = true
   try {
+    const payload: UpdateParticipantPayload = {
+      benefit_metadata: { ...benefitFormData.value }
+    }
+
+    if (benefitAwardedAt.value && benefitAwardedAt.value.trim()) {
+      payload.awarded_at = benefitAwardedAt.value.trim()
+    } else if (selectedBenefitParticipant.value.awarded_at) {
+      payload.awarded_at = null
+    }
+
     await apiUpdateParticipant(
       branchesStore.activeBranchId,
       groupId.value,
       selectedBenefitParticipant.value.id,
-      {
-        benefit_metadata: { ...benefitFormData.value }
-      }
+      payload
     )
-    showMessage('Datos del beneficio guardados exitosamente.')
+
+    if (payload.awarded_at) {
+      showMessage('Adjudicación registrada y confirmada exitosamente.')
+    } else if (payload.awarded_at === null) {
+      showMessage('Adjudicación revocada exitosamente.')
+    } else {
+      showMessage('Datos de adjudicación guardados exitosamente.')
+    }
+
     benefitDialogOpen.value = false
     selectedBenefitParticipant.value = null
     participantsQuery.refresh()
   } catch (err: unknown) {
     const errorObj = err as any
     const msg =
-      errorObj?.response?.data?.message ||
       errorObj?.response?.data?.messages?.error ||
+      errorObj?.response?.data?.message ||
       errorObj?.response?.data?.error ||
-      (err instanceof Error ? err.message : 'Error al guardar los datos del beneficio.')
+      (err instanceof Error ? err.message : 'Error al guardar los datos de adjudicación.')
     showMessage(msg, 'error')
   } finally {
     isSubmittingBenefit.value = false
   }
 }
 
-// Autocompletado paginado de personas (Clientes y Asesores)
+// Autocompletado paginado de personas (Clientes y Referentes)
 async function fetchPersonsOptions(params: PaginatedQueryParams): Promise<{ items: any[]; total: number }> {
   try {
     const dqbFilters: any[] = []
@@ -386,24 +406,6 @@ function openEditParticipantDialog(participant: ParticipantItem): void {
   participantDialogOpen.value = true
 }
 
-const parsedParticipantMetadata = computed(() => {
-  if (!selectedParticipantDetails.value?.benefit_metadata) return {}
-  const raw = selectedParticipantDetails.value.benefit_metadata
-  if (typeof raw === 'string') {
-    try {
-      return JSON.parse(raw)
-    } catch {
-      return {}
-    }
-  }
-  return (raw as Record<string, any>) || {}
-})
-
-function openParticipantDetails(participant: ParticipantItem): void {
-  selectedParticipantDetails.value = participant
-  detailsDialogOpen.value = true
-}
-
 function promptDeleteParticipant(participant: ParticipantItem): void {
   participantToDelete.value = participant
   deleteDialogOpen.value = true
@@ -442,7 +444,7 @@ async function handleSaveParticipant(): Promise<void> {
     return
   }
   if (!participantFormData.value.client_id) {
-    showMessage('Selecciona el cliente suscriptor.', 'error')
+    showMessage('Selecciona el cliente.', 'error')
     return
   }
 
@@ -476,8 +478,8 @@ async function handleSaveParticipant(): Promise<void> {
 
     const payload = {
       client_id: Number(participantFormData.value.client_id),
-      referrer_id: participantFormData.value.referrer_id ? Number(participantFormData.value.referrer_id) : undefined,
-      position: participantFormData.value.position ? Number(participantFormData.value.position) : undefined,
+      referrer_id: participantFormData.value.referrer_id ? Number(participantFormData.value.referrer_id) : (editingParticipantId.value ? null : undefined),
+      position: participantFormData.value.position ? Number(participantFormData.value.position) : (editingParticipantId.value ? null : undefined),
       frequency_id: customFrequencyId,
       frequency_base_date: customBaseDate,
       installment_amount: customAmount,
@@ -520,31 +522,6 @@ async function handleSaveParticipant(): Promise<void> {
 }
 
 // ---------------------------------------------------------------------
-// 3. Generar Cuotas del Grupo
-// ---------------------------------------------------------------------
-const isGeneratingQuotes = ref(false)
-
-async function handleGenerateGroupReceivables(): Promise<void> {
-  if (!branchesStore.activeBranchId || !groupId.value) return
-  isGeneratingQuotes.value = true
-  try {
-    const res = await financingStore.generateGroupReceivables(branchesStore.activeBranchId, groupId.value)
-    showMessage(`Cronograma masivo generado. Cuotas generadas: ${res.generated || 0}`)
-    participantsQuery.refresh()
-  } catch (err: unknown) {
-    const errorObj = err as any
-    const msg =
-      errorObj?.response?.data?.message ||
-      errorObj?.response?.data?.messages?.error ||
-      errorObj?.response?.data?.error ||
-      (err instanceof Error ? err.message : 'Error al generar cuotas del grupo.')
-    showMessage(msg, 'error')
-  } finally {
-    isGeneratingQuotes.value = false
-  }
-}
-
-// ---------------------------------------------------------------------
 // 4. Diálogo de Estado de Cuenta / Cartola por Participante
 // ---------------------------------------------------------------------
 const statementDialogOpen = ref(false)
@@ -556,68 +533,14 @@ function openQuotesDialog(participant: ParticipantItem): void {
 }
 
 // ---------------------------------------------------------------------
-// 6. Emisión y Descarga de Contrato para Participante
+// 6. Gestión Unificada de Contrato para Participante
 // ---------------------------------------------------------------------
-const isEmittingContract = ref(false)
-const isLoadingContractPdf = ref<Record<string | number, boolean>>({})
+const contractModalOpen = ref(false)
+const selectedContractParticipant = ref<ParticipantItem | null>(null)
 
-async function handleDownloadContractPdf(participant: ParticipantItem): Promise<void> {
-  if (!branchesStore.activeBranchId || !groupId.value) return
-  isLoadingContractPdf.value[participant.id] = true
-  try {
-    const blob = await fetchContractPdf(branchesStore.activeBranchId, groupId.value, participant.id)
-    const blobUrl = window.URL.createObjectURL(new Blob([blob], { type: 'application/pdf' }))
-    const newWindow = window.open(blobUrl, '_blank')
-    if (!newWindow || newWindow.closed || typeof newWindow.closed === 'undefined') {
-      const link = document.createElement('a')
-      link.href = blobUrl
-      link.download = `Contrato-Turno-${participant.position || participant.id}.pdf`
-      document.body.appendChild(link)
-      link.click()
-      document.body.removeChild(link)
-    }
-    setTimeout(() => window.URL.revokeObjectURL(blobUrl), 30000)
-  } catch (err: unknown) {
-    const errorObj = err as any
-    if (errorObj?.response?.status === 404) {
-      showMessage('El participante aún no tiene un contrato emitido. Use "Emitir Contrato" primero.', 'warning')
-    } else {
-      const msg =
-        errorObj?.response?.data?.message ||
-        errorObj?.response?.data?.messages?.error ||
-        errorObj?.response?.data?.error ||
-        (err instanceof Error ? err.message : 'Error al obtener el PDF del contrato.')
-      showMessage(msg, 'error')
-    }
-  } finally {
-    isLoadingContractPdf.value[participant.id] = false
-  }
-}
-
-async function handleEmitContract(participant: ParticipantItem): Promise<void> {
-  if (!branchesStore.activeBranchId || !groupId.value) return
-  isEmittingContract.value = true
-  try {
-    await emitContract(branchesStore.activeBranchId, groupId.value, participant.id)
-    showMessage(`Contrato emitido exitosamente para el suscriptor turno #${participant.position}. Abriendo PDF...`)
-    participantsQuery.refresh()
-    await handleDownloadContractPdf(participant)
-  } catch (err: unknown) {
-    const errorObj = err as any
-    if (errorObj?.response?.data?.error === 'CONTRACT_ALREADY_EXISTS') {
-      showMessage('El contrato ya fue emitido previamente. Abriendo PDF...', 'info')
-      await handleDownloadContractPdf(participant)
-    } else {
-      const msg =
-        errorObj?.response?.data?.message ||
-        errorObj?.response?.data?.messages?.error ||
-        errorObj?.response?.data?.error ||
-        (err instanceof Error ? err.message : 'Error al emitir contrato.')
-      showMessage(msg, 'error')
-    }
-  } finally {
-    isEmittingContract.value = false
-  }
+function openContractModal(participant: ParticipantItem): void {
+  selectedContractParticipant.value = participant
+  contractModalOpen.value = true
 }
 
 // ---------------------------------------------------------------------
@@ -697,25 +620,13 @@ onMounted(() => {
       <!-- Botones de Acción de Nivel de Grupo -->
       <div class="d-flex align-center ga-2 flex-wrap">
         <v-btn
-          variant="outlined"
-          color="primary"
-          prepend-icon="mdi-calculator"
-          class="text-none font-weight-bold"
-          :loading="isGeneratingQuotes"
-          data-testid="btn-generate-group-quotes"
-          @click="handleGenerateGroupReceivables"
-        >
-          Generar Cuotas
-        </v-btn>
-
-        <v-btn
           color="primary"
           prepend-icon="mdi-plus"
           class="text-none font-weight-bold px-4"
           data-testid="btn-create-participant"
           @click="openCreateParticipantDialog"
         >
-          Nuevo Participante
+          Registrar
         </v-btn>
       </div>
     </div>
@@ -777,23 +688,38 @@ onMounted(() => {
             @click="participantsQuery.refresh()"
           />
         
-  <!-- Modal: Datos del Beneficio -->
+  <!-- Modal: Adjudicación -->
   <AppModal
     v-model="benefitDialogOpen"
-    title="Datos del Beneficio"
-    :subtitle="selectedBenefitParticipant ? `Especificaciones del beneficio para ${selectedBenefitParticipant.client_first_name} ${selectedBenefitParticipant.client_last_name || ''}` : 'Especificaciones del beneficio adjudicable'"
+    title="Adjudicación"
+    :subtitle="selectedBenefitParticipant ? `Especificaciones de la adjudicación para ${selectedBenefitParticipant.client_first_name} ${selectedBenefitParticipant.client_last_name || ''}` : 'Especificaciones de la adjudicación'"
     max-width="580"
     persistent
     :loading="isSubmittingBenefit"
-    submit-text="Guardar Beneficio"
+    :submit-text="isBenefitUpdate ? 'Actualizar' : 'Registrar'"
     submit-icon="mdi-check"
     form-id="form-participant-benefit"
     @submit="handleSaveBenefit"
   >
     <v-form id="form-participant-benefit" @submit.prevent="handleSaveBenefit">
+      <div class="mb-4">
+        <v-text-field
+          v-model="benefitAwardedAt"
+          label="Fecha de Adjudicación / Entrega"
+          type="date"
+          variant="outlined"
+          density="comfortable"
+          persistent-placeholder
+          clearable
+          hint="Opcional. Define una fecha para confirmar formalmente la adjudicación y entrega"
+          persistent-hint
+          data-testid="input-participant-awarded-at"
+        />
+      </div>
+
       <div v-if="isLoadingSchema" class="py-4 text-center">
         <v-progress-circular indeterminate color="primary" size="28" />
-        <div class="text-caption text-medium-emphasis mt-2">Cargando campos del beneficio...</div>
+        <div class="text-caption text-medium-emphasis mt-2">Cargando campos de la adjudicación...</div>
       </div>
       <div v-else-if="contractMetadataSchema && Object.keys(contractMetadataSchema.fields || {}).length > 0">
         <AppMetadataRenderer
@@ -804,7 +730,7 @@ onMounted(() => {
         />
       </div>
       <div v-else class="text-caption text-medium-emphasis py-4 text-center">
-        Este tipo de contrato no tiene campos dinámicos de beneficio configurados.
+        Este tipo de contrato no tiene campos dinámicos de adjudicación configurados.
       </div>
     </v-form>
   </AppModal>
@@ -834,9 +760,19 @@ onMounted(() => {
         @update:options="participantsQuery.onUpdateOptions"
       >
         <template #[`item.position`]="{ item }">
-          <v-chip size="small" color="primary" variant="tonal" label class="font-weight-bold">
+          <v-chip
+            v-if="item.position"
+            size="small"
+            color="primary"
+            variant="tonal"
+            label
+            class="font-weight-bold"
+          >
             Turno #{{ item.position }}
           </v-chip>
+          <span v-else class="text-caption text-medium-emphasis font-weight-medium">
+            N/A
+          </span>
         </template>
 
         <template #[`item.client`]="{ item }">
@@ -848,18 +784,11 @@ onMounted(() => {
               <div class="font-weight-bold text-body-2 text-high-emphasis">
                 {{ item.client_first_name || 'Cliente' }} {{ item.client_last_name || '' }}
               </div>
-              <div class="text-caption text-medium-emphasis">
-                ID: #{{ item.client_id }}
+              <div v-if="item.client_identification_value" class="text-caption text-medium-emphasis">
+                CI: {{ item.client_identification_value }}
               </div>
             </div>
           </div>
-        </template>
-
-        <template #[`item.referrer`]="{ item }">
-          <span v-if="item.referrer_first_name" class="text-body-2 text-high-emphasis font-weight-medium">
-            {{ item.referrer_first_name }} {{ item.referrer_last_name || '' }}
-          </span>
-          <span v-else class="text-caption text-medium-emphasis">Sin asignar</span>
         </template>
 
         <template #[`item.status`]="{ item }">
@@ -875,7 +804,12 @@ onMounted(() => {
         </template>
 
         <template #[`item.is_overdue`]="{ item }">
+          <!-- Si el participante no está activo, no aplica morosidad -->
+          <span v-if="item.status === '0' || item.status === '2'" class="text-caption text-medium-emphasis font-weight-medium">
+            N/A
+          </span>
           <v-chip
+            v-else
             size="small"
             :color="item.is_overdue === '1' || item.is_overdue === 1 ? 'error' : 'success'"
             variant="tonal"
@@ -890,6 +824,10 @@ onMounted(() => {
           <span v-if="item.awarded_at" class="text-caption text-success font-weight-bold d-inline-flex align-center">
             <v-icon icon="mdi-check-decagram" size="small" color="success" class="mr-1" />
             {{ item.awarded_at }}
+          </span>
+          <!-- Si no tiene número asignado o está en espera/retirado, no aplica adjudicación -->
+          <span v-else-if="!item.position || item.status === '0' || item.status === '2'" class="text-caption text-medium-emphasis font-weight-medium">
+            N/A
           </span>
           <span v-else class="text-caption text-medium-emphasis">Pendiente</span>
         </template>
@@ -908,54 +846,36 @@ onMounted(() => {
                 />
               </template>
               <v-list density="compact" rounded="md" elevation="4" class="py-1 min-w-160">
-                <!-- 1. Ver Detalles -->
-                <v-list-item
-                  prepend-icon="mdi-eye-outline"
-                  title="Ver Detalles"
-                  data-testid="menu-item-participant-details"
-                  @click="openParticipantDetails(item)"
-                />
-
-                <!-- 2. Estado de Cuenta / Cartola -->
+                <!-- 1. Estado de cuenta -->
                 <v-list-item
                   prepend-icon="mdi-file-document-outline"
-                  title="Estado de Cuenta / Cartola"
+                  title="Estado de cuenta"
                   data-testid="menu-item-view-quotes"
                   @click="openQuotesDialog(item)"
                 />
 
-                <!-- 3. Ver / Imprimir Contrato (PDF) -->
-                <v-list-item
-                  prepend-icon="mdi-file-pdf-box"
-                  title="Ver Contrato (PDF)"
-                  data-testid="menu-item-view-contract-pdf"
-                  :loading="isLoadingContractPdf[item.id]"
-                  @click="handleDownloadContractPdf(item)"
-                />
-
-                <!-- 4. Emitir Contrato Oficial -->
+                <!-- 3. Contrato (Unificado: Descarga y Subida) -->
                 <v-list-item
                   prepend-icon="mdi-file-certificate-outline"
-                  title="Emitir Contrato"
-                  data-testid="menu-item-emit-contract"
-                  :loading="isEmittingContract"
-                  @click="handleEmitContract(item)"
+                  title="Contrato"
+                  data-testid="menu-item-contract"
+                  @click="openContractModal(item)"
                 />
 
                 <v-divider class="my-1" />
 
-                <!-- 4. Datos del Beneficio -->
+                <!-- 4. Adjudicación -->
                 <v-list-item
                   prepend-icon="mdi-gift-outline"
-                  title="Datos del Beneficio"
+                  title="Adjudicación"
                   data-testid="menu-item-participant-benefit"
                   @click="openBenefitDialog(item)"
                 />
 
-                <!-- 5. Modificar Participante -->
+                <!-- 4. Modificar -->
                 <v-list-item
                   prepend-icon="mdi-pencil-outline"
-                  title="Editar Participante"
+                  title="Editar"
                   data-testid="menu-item-edit-participant"
                   @click="openEditParticipantDialog(item)"
                 />
@@ -976,28 +896,28 @@ onMounted(() => {
     </v-card>
   </div>
 
-  <!-- Modal: Inscribir / Editar Participante -->
+  <!-- Modal: Registrar / Editar -->
   <AppModal
     v-model="participantDialogOpen"
-    :title="editingParticipantId ? 'Editar Participante' : 'Nuevo Participante'"
-    :subtitle="editingParticipantId ? 'Modifica los parámetros y especificaciones del participante' : 'Asigna un cliente suscriptor y su número de turno en el grupo'"
+    :title="editingParticipantId ? 'Editar' : 'Registrar'"
+    :subtitle="editingParticipantId ? 'Modifica los parámetros y especificaciones en el grupo' : 'Asigna un cliente y su número de turno en el grupo'"
     max-width="540"
     persistent
     :loading="isSubmittingParticipant"
-    :submit-text="editingParticipantId ? 'Guardar Cambios' : 'Inscribir Participante'"
+    :submit-text="editingParticipantId ? 'Actualizar' : 'Registrar'"
     :submit-icon="editingParticipantId ? 'mdi-check' : 'mdi-plus'"
     form-id="form-register-participant"
     @submit="handleSaveParticipant"
   >
     <v-form id="form-register-participant" @submit.prevent="handleSaveParticipant">
-      <!-- 1. Cliente Suscriptor con AppPaginatedSelect -->
+      <!-- 1. Cliente con AppPaginatedSelect -->
       <v-row density="compact" class="mb-1">
         <v-col cols="12">
           <AppPaginatedSelect
             v-model="participantFormData.client_id"
             :fetch-options="fetchPersonsOptions"
             :fetch-by-id="fetchPersonSingle"
-            label="Cliente Suscriptor *"
+            label="Cliente *"
             placeholder="Buscar por nombre, apellido o cédula..."
             value-key="id"
             label-key="name"
@@ -1008,14 +928,14 @@ onMounted(() => {
         </v-col>
       </v-row>
 
-      <!-- 2. Contacto Referente ($15) y Posición -->
+      <!-- 2. Referente ($15) y Posición -->
       <v-row density="compact" class="mb-1">
         <v-col cols="12" sm="8">
           <AppPaginatedSelect
             v-model="participantFormData.referrer_id"
             :fetch-options="fetchPersonsOptions"
             :fetch-by-id="fetchPersonSingle"
-            label="Contacto Referente"
+            label="Referente"
             placeholder="Buscar persona referente..."
             value-key="id"
             label-key="name"
@@ -1039,7 +959,7 @@ onMounted(() => {
         </v-col>
       </v-row>
 
-      <!-- 3. Estado Inicial -->
+      <!-- 3. Estado -->
       <v-row density="compact" class="mb-1">
         <v-col cols="12">
           <v-select
@@ -1051,7 +971,7 @@ onMounted(() => {
             ]"
             item-title="title"
             item-value="value"
-            label="Estado Inicial"
+            label="Estado"
             variant="outlined"
             density="comfortable"
             data-testid="select-participant-status"
@@ -1132,170 +1052,14 @@ onMounted(() => {
     </v-form>
   </AppModal>
 
-  <!-- Modal: Ver Detalles del Participante -->
-  <AppModal
-    v-model="detailsDialogOpen"
-    title="Detalles del Participante"
-    subtitle="Información completa de auditoría y condiciones del suscriptor"
-    max-width="600"
-    cancel-text="Cerrar"
-    submit-text="Editar Participante"
-    submit-icon="mdi-pencil"
-    @submit="selectedParticipantDetails && (detailsDialogOpen = false, openEditParticipantDialog(selectedParticipantDetails))"
-  >
-    <div v-if="selectedParticipantDetails" class="d-flex flex-column ga-4">
-      <!-- Identificación Principal -->
-      <div class="pa-4 rounded-lg bg-surface-variant d-flex align-center justify-space-between flex-wrap ga-3">
-        <div>
-          <div class="text-caption text-medium-emphasis">Suscriptor Titular</div>
-          <div class="text-h6 font-weight-bold text-high-emphasis">
-            {{ selectedParticipantDetails.client_first_name || 'Cliente' }} {{ selectedParticipantDetails.client_last_name || '' }}
-          </div>
-          <div class="text-caption text-medium-emphasis mt-0.5">
-            ID Suscripción: #{{ selectedParticipantDetails.id }} &bull; Turno #{{ selectedParticipantDetails.position }}
-          </div>
-        </div>
-        <v-chip
-          size="small"
-          :color="selectedParticipantDetails.status === '1' ? 'success' : selectedParticipantDetails.status === '2' ? 'grey' : 'info'"
-          variant="flat"
-          class="font-weight-bold"
-        >
-          {{ selectedParticipantDetails.status === '1' ? 'Activo' : selectedParticipantDetails.status === '2' ? 'Retirado' : 'En Espera' }}
-        </v-chip>
-      </div>
-
-      <!-- Métricas del Participante -->
-      <v-row density="compact">
-        <v-col cols="6" sm="3">
-          <div class="border rounded-lg pa-3 text-center">
-            <div class="text-caption text-medium-emphasis">Turno Asignado</div>
-            <div class="text-subtitle-1 font-weight-bold text-primary mt-1">
-              #{{ selectedParticipantDetails.position }}
-            </div>
-          </div>
-        </v-col>
-        <v-col cols="6" sm="3">
-          <div class="border rounded-lg pa-3 text-center">
-            <div class="text-caption text-medium-emphasis">Valor Cuota</div>
-            <div class="text-subtitle-1 font-weight-bold text-high-emphasis mt-1">
-              ${{ Number(selectedParticipantDetails.installment_amount || currentGroup?.installment_amount || 0).toLocaleString('en-US', { minimumFractionDigits: 2 }) }}
-            </div>
-          </div>
-        </v-col>
-        <v-col cols="6" sm="3">
-          <div class="border rounded-lg pa-3 text-center">
-            <div class="text-caption text-medium-emphasis">Solvencia</div>
-            <div class="text-subtitle-1 font-weight-bold mt-1" :class="selectedParticipantDetails.is_overdue === '1' ? 'text-error' : 'text-success'">
-              {{ selectedParticipantDetails.is_overdue === '1' ? 'En Mora' : 'Al Día' }}
-            </div>
-          </div>
-        </v-col>
-        <v-col cols="6" sm="3">
-          <div class="border rounded-lg pa-3 text-center">
-            <div class="text-caption text-medium-emphasis">Adjudicación</div>
-            <div class="text-subtitle-1 font-weight-bold text-info mt-1">
-              {{ selectedParticipantDetails.awarded_at ? 'Adjudicado' : 'Pendiente' }}
-            </div>
-          </div>
-        </v-col>
-      </v-row>
-
-      <!-- Parámetros Operativos -->
-      <div class="border rounded-lg overflow-hidden">
-        <v-table density="compact">
-          <tbody>
-            <tr>
-              <td class="font-weight-medium text-medium-emphasis w-50">Grupo Perteneciente</td>
-              <td class="font-weight-bold text-high-emphasis">
-                {{ currentGroup?.name || `#${groupId}` }}
-              </td>
-            </tr>
-            <tr>
-              <td class="font-weight-medium text-medium-emphasis">Contacto Referente</td>
-              <td class="text-high-emphasis">
-                {{ selectedParticipantDetails.referrer_first_name ? `${selectedParticipantDetails.referrer_first_name} ${selectedParticipantDetails.referrer_last_name || ''}` : 'Sin asignar' }}
-              </td>
-            </tr>
-            <tr v-if="selectedParticipantDetails.installment_amount">
-              <td class="font-weight-medium text-medium-emphasis">Cuota Regular</td>
-              <td class="text-high-emphasis font-weight-bold">
-                ${{ Number(selectedParticipantDetails.installment_amount).toLocaleString('en-US', { minimumFractionDigits: 2 }) }}
-              </td>
-            </tr>
-            <tr v-if="selectedParticipantDetails.installment_count">
-              <td class="font-weight-medium text-medium-emphasis">Total de Cuotas</td>
-              <td class="text-high-emphasis">
-                {{ selectedParticipantDetails.installment_count }}
-              </td>
-            </tr>
-            <tr v-if="selectedParticipantDetails.frequency_base_date">
-              <td class="font-weight-medium text-medium-emphasis">Fecha Base de Cobro</td>
-              <td class="text-high-emphasis">
-                {{ selectedParticipantDetails.frequency_base_date }}
-              </td>
-            </tr>
-            <!-- Campos del Beneficio Dinámicos -->
-            <template v-if="contractMetadataSchema?.fields && Object.keys(contractMetadataSchema.fields).length > 0">
-              <tr v-for="(fieldDef, fieldKey) in contractMetadataSchema.fields" :key="fieldKey">
-                <td class="font-weight-medium text-medium-emphasis">
-                  {{ getFieldLabel(fieldDef) }}
-                </td>
-                <td class="text-high-emphasis">
-                  {{ parsedParticipantMetadata[fieldDef.code] || '-' }}
-                </td>
-              </tr>
-            </template>
-            <template v-else-if="Object.keys(parsedParticipantMetadata).length > 0">
-              <tr v-for="(val, key) in parsedParticipantMetadata" :key="key">
-                <td class="font-weight-medium text-medium-emphasis text-capitalize">{{ key }}</td>
-                <td class="text-high-emphasis">{{ val || '-' }}</td>
-              </tr>
-            </template>
-          </tbody>
-        </v-table>
-      </div>
-
-      <!-- Datos de Auditoría -->
-      <div class="border rounded-lg pa-3 bg-surface-variant">
-        <div class="text-caption font-weight-bold text-medium-emphasis mb-2 text-uppercase" style="letter-spacing: 0.05em;">
-          Auditoría de Registro
-        </div>
-        <div class="d-flex flex-column ga-1 text-caption">
-          <div class="d-flex justify-space-between">
-            <span class="text-medium-emphasis">Fecha de Creación:</span>
-            <span class="font-weight-medium text-high-emphasis">{{ selectedParticipantDetails.created_at || 'N/A' }}</span>
-          </div>
-          <div class="d-flex justify-space-between">
-            <span class="text-medium-emphasis">Última Modificación:</span>
-            <span class="font-weight-medium text-high-emphasis">{{ selectedParticipantDetails.updated_at || 'Sin modificaciones' }}</span>
-          </div>
-        </div>
-      </div>
-    </div>
-    <template #prepend-actions>
-      <v-btn
-        v-if="selectedParticipantDetails"
-        variant="tonal"
-        color="primary"
-        prepend-icon="mdi-file-pdf-box"
-        class="text-none font-weight-bold"
-        :loading="isLoadingContractPdf[selectedParticipantDetails.id]"
-        @click="handleDownloadContractPdf(selectedParticipantDetails)"
-      >
-        Ver Contrato (PDF)
-      </v-btn>
-    </template>
-  </AppModal>
-
-  <!-- Modal: Confirmar Eliminación del Participante -->
+  <!-- Modal: Confirmar Eliminación -->
   <AppModal
     v-model="deleteDialogOpen"
-    title="Eliminar Participante"
+    title="Eliminar"
     subtitle="Esta acción retirará al suscriptor del grupo activo"
     max-width="460"
     :loading="isDeletingParticipant"
-    submit-text="Sí, Eliminar"
+    submit-text="Eliminar"
     submit-color="error"
     submit-icon="mdi-trash-can"
     @submit="handleConfirmDeleteParticipant"
@@ -1303,8 +1067,7 @@ onMounted(() => {
     <div class="py-2">
       <p class="text-body-2 text-high-emphasis mb-3">
         ¿Estás seguro de que deseas retirar del grupo al participante
-        <strong>{{ participantToDelete?.client_first_name }} {{ participantToDelete?.client_last_name }}</strong>
-        (Turno #{{ participantToDelete?.position }})?
+        <strong>{{ participantToDelete?.client_first_name }} {{ participantToDelete?.client_last_name }}</strong><span v-if="participantToDelete?.position"> (Turno #{{ participantToDelete.position }})</span>?
       </p>
       <v-alert
         type="warning"
@@ -1316,11 +1079,23 @@ onMounted(() => {
     </div>
   </AppModal>
 
-  <!-- Modal: Estado de Cuenta / Cartola (Amortización y Recaudación) -->
+  <!-- Modal: Estado de Cuenta (Amortización y Recaudación) -->
   <StatementModal
     v-model="statementDialogOpen"
     :participant-id="selectedParticipant?.id || null"
     :group-id="groupId"
+    @quotes-generated="participantsQuery.refresh"
+    @message="showMessage"
+  />
+
+  <!-- Modal: Gestión Unificada de Contrato (Descarga y Subida) -->
+  <ParticipantContractModal
+    v-model="contractModalOpen"
+    :participant="selectedContractParticipant"
+    :group-id="groupId"
+    :group-name="currentGroup?.name"
+    @contract-updated="participantsQuery.refresh"
+    @message="showMessage"
   />
 
   <!-- Snackbar de Notificaciones -->

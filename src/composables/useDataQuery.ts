@@ -53,7 +53,8 @@ export function useDataQuery<T>(
         {
           searchFields: options.searchFields,
           staticFilters: staticFilters.value,
-          fields: options.fields
+          fields: options.fields,
+          defaultOrder: options.defaultOrder
         }
       )
 

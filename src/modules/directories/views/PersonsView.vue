@@ -50,15 +50,16 @@ function getDocPrefix(typeVal: string | number | undefined): string {
 // ---------------------------------------------------------------------
 // 2. Filtros de Estado
 // ---------------------------------------------------------------------
-const currentStatusFilter = ref<'all' | '0' | '1'>('all')
+const statusOptions = [
+  { text: 'Activos', value: '0' },
+  { text: 'Inactivos', value: '1' }
+]
 
-function handleStatusFilter(val: 'all' | '0' | '1'): void {
-  currentStatusFilter.value = val
-  if (val === 'all') {
-    personsQuery.staticFilters.value = []
+function handleStatusFilterChange(dqbFilter: DqbFilterTuple[] | null): void {
+  if (dqbFilter && dqbFilter.length > 0) {
+    personsQuery.staticFilters.value = dqbFilter
   } else {
-    const filterTuple: DqbFilterTuple = ['is_disabled', val === '1' ? '1' : '0', '=', 'AND']
-    personsQuery.staticFilters.value = [filterTuple]
+    personsQuery.staticFilters.value = []
   }
   personsQuery.page.value = 1
   personsQuery.refresh()
@@ -237,14 +238,16 @@ function showNotification(text: string, color: 'success' | 'error' | 'warning' =
 
 <template>
   <div class="persons-view-container pa-4 pa-sm-6">
-    <!-- Encabezado de Página -->
+    <!-- ═══════════════════════════════════════════════════════════ -->
+    <!-- PRIMERA SECCIÓN: CABECERA Y ACCIONES                          -->
+    <!-- ═══════════════════════════════════════════════════════════ -->
     <div class="d-flex align-center justify-space-between flex-wrap ga-3 mb-6">
       <div>
         <h1 class="text-h5 font-weight-bold text-high-emphasis mb-0 leading-tight">
           Directorio de Personas
         </h1>
         <p class="text-body-2 text-medium-emphasis mb-0 mt-0">
-          Gestión centralizada de clientes, asesores y personas registradas en el sistema
+          Gestión centralizada de clientes, referentes y personas registradas en el sistema
         </p>
       </div>
 
@@ -257,7 +260,7 @@ function showNotification(text: string, color: 'success' | 'error' | 'warning' =
           data-testid="btn-create-person"
           @click="openCreateDialog"
         >
-          Nueva Persona
+          Registrar
         </v-btn>
       </div>
 
@@ -276,7 +279,7 @@ function showNotification(text: string, color: 'success' | 'error' | 'warning' =
           <v-list density="compact" rounded="lg" elevation="3">
             <v-list-item
               prepend-icon="mdi-plus"
-              title="Nueva Persona"
+              title="Registrar"
               @click="openCreateDialog"
             />
           </v-list>
@@ -284,59 +287,78 @@ function showNotification(text: string, color: 'success' | 'error' | 'warning' =
       </div>
     </div>
 
-    <!-- Barra de Búsqueda y Filtros -->
-    <v-card variant="flat" rounded="lg" class="border mb-4">
-      <v-card-text class="py-3 px-4">
-        <div class="d-flex align-center flex-wrap ga-3 justify-space-between">
-          <!-- Input de Búsqueda -->
-          <div style="min-width: 280px; max-width: 420px;" class="flex-grow-1">
-            <v-text-field
-              v-model="personsQuery.search.value"
-              density="compact"
-              variant="outlined"
-              placeholder="Buscar por nombre, apellido o cédula..."
-              prepend-inner-icon="mdi-magnify"
-              hide-details
-              clearable
-              data-testid="input-search-persons"
-            />
-          </div>
+    <!-- ═══════════════════════════════════════════════════════════ -->
+    <!-- SEGUNDA SECCIÓN: BARRA DE BÚSQUEDA (SECCIÓN SOLA, 7 COLS)   -->
+    <!-- ═══════════════════════════════════════════════════════════ -->
+    <v-row density="compact" class="mb-3">
+      <v-col cols="12" md="7">
+        <v-text-field
+          v-model="personsQuery.search.value"
+          prepend-inner-icon="mdi-magnify"
+          placeholder="Buscar por nombre, apellido o cédula..."
+          variant="solo"
+          flat
+          bg-color="white"
+          density="comfortable"
+          rounded="lg"
+          hide-details
+          clearable
+          class="border search-field elevation-0"
+          data-testid="input-search-persons"
+        />
+      </v-col>
+    </v-row>
 
-          <!-- Filtros de Estado y Refrescar -->
-          <div class="d-flex align-center ga-2 flex-wrap">
-            <v-chip-group
-              :model-value="currentStatusFilter"
-              mandatory
-              color="primary"
-              @update:model-value="(val: any) => handleStatusFilter(val)"
-            >
-              <v-chip value="all" filter size="small" class="font-weight-medium">Todos</v-chip>
-              <v-chip value="0" filter size="small" class="font-weight-medium">Activos</v-chip>
-              <v-chip value="1" filter size="small" class="font-weight-medium">Inactivos</v-chip>
-            </v-chip-group>
+    <!-- ═══════════════════════════════════════════════════════════ -->
+    <!-- TERCERA SECCIÓN: FILTROS DE ESTADO Y BOTÓN DE RECARGA        -->
+    <!-- ═══════════════════════════════════════════════════════════ -->
+    <div class="d-flex align-center justify-space-between flex-wrap ga-2 mb-3">
+      <!-- Chips alineados a la izquierda -->
+      <div class="d-flex align-center flex-wrap ga-2">
+        <AppChipFilter
+          field="is_disabled"
+          :items="statusOptions"
+          all-text="Todos"
+          color="primary"
+          density="comfortable"
+          @change="handleStatusFilterChange"
+        />
+      </div>
 
-            <v-btn
-              icon="mdi-refresh"
-              variant="text"
-              size="small"
-              :loading="personsQuery.isLoading.value"
-              data-testid="btn-refresh-persons"
-              @click="personsQuery.refresh()"
-            />
-          </div>
-        </div>
-      </v-card-text>
-    </v-card>
+      <!-- Botón de recarga a la derecha -->
+      <v-tooltip
+        text="Recargar la tabla"
+        location="top"
+        color="#1E293B"
+      >
+        <template #activator="{ props: tooltipProps }">
+          <v-btn
+            v-bind="tooltipProps"
+            icon="mdi-refresh"
+            variant="flat"
+            color="white"
+            size="small"
+            class="border rounded-circle flex-shrink-0"
+            :loading="personsQuery.isLoading.value"
+            data-testid="btn-refresh-persons"
+            @click="personsQuery.refresh()"
+          />
+        </template>
+      </v-tooltip>
+    </div>
 
-    <!-- Tabla Principal de Personas -->
-    <v-card variant="flat" rounded="lg" class="border">
+    <!-- ═══════════════════════════════════════════════════════════ -->
+    <!-- CUARTA SECCIÓN: TABLA CON FONDO BLANCO Y ACCIONES            -->
+    <!-- ═══════════════════════════════════════════════════════════ -->
+    <v-card elevation="0" rounded="lg" class="border bg-white overflow-hidden">
       <v-data-table-server
+        v-model:items-per-page="personsQuery.itemsPerPage.value"
+        v-model:page="personsQuery.page.value"
+        v-model:sort-by="personsQuery.sortBy.value"
         :headers="tableHeaders"
         :items="personsQuery.items.value"
         :items-length="personsQuery.totalItems.value"
         :loading="personsQuery.isLoading.value"
-        :page="personsQuery.page.value"
-        :items-per-page="personsQuery.itemsPerPage.value"
         density="comfortable"
         hover
         data-testid="persons-table"
@@ -431,49 +453,69 @@ function showNotification(text: string, color: 'success' | 'error' | 'warning' =
             <v-icon icon="mdi-account-search-outline" size="48" class="mb-3 text-disabled" />
             <div class="text-subtitle-1 font-weight-medium">No se encontraron personas</div>
             <div class="text-caption text-disabled">
-              Utilice el botón de "+ Nueva Persona" para agregar un registro al directorio.
+              Utilice el botón de "+ Registrar" para agregar un registro al directorio.
             </div>
           </div>
         </template>
       </v-data-table-server>
     </v-card>
 
-    <!-- Modal Formulario: Crear / Editar Persona -->
+    <!-- Modal Formulario: Registrar / Editar -->
     <AppModal
       v-model="formDialogOpen"
-      :title="editingPersonId ? 'Editar Persona' : 'Nueva Persona'"
+      :title="editingPersonId ? 'Editar' : 'Registrar'"
       :subtitle="editingPersonId ? 'Actualice la información de la persona seleccionada' : 'Complete los datos para agregar una persona al directorio'"
       :submit-loading="isSubmitting"
-      :submit-text="editingPersonId ? 'Guardar Cambios' : 'Registrar Persona'"
+      :submit-text="editingPersonId ? 'Actualizar' : 'Registrar'"
       :submit-icon="editingPersonId ? 'mdi-check' : 'mdi-plus'"
       form-id="form-person"
       max-width="640"
       @submit="handleSavePerson"
     >
       <v-form id="form-person" @submit.prevent="handleSavePerson">
-        <!-- 1. Identificación: Tipo y Número -->
+        <!-- 1. Identificación Unificada con selector de tipo -->
         <v-row density="compact" class="mb-1">
-          <v-col cols="12" sm="5">
-            <v-select
-              v-model="formData.identification_type"
-              :items="idTypes"
-              item-title="title"
-              item-value="value"
-              label="Tipo de Documento *"
-              variant="outlined"
-              density="comfortable"
-              data-testid="select-person-id-type"
-            />
-          </v-col>
-          <v-col cols="12" sm="7">
+          <v-col cols="12">
             <v-text-field
               v-model="formData.identification_value"
-              label="Número de Identificación *"
+              label="Identificación *"
               placeholder="Ej: 12345678"
               variant="outlined"
               density="comfortable"
               data-testid="input-person-id-value"
-            />
+            >
+              <template #prepend-inner>
+                <v-menu location="bottom start">
+                  <template #activator="{ props: menuProps }">
+                    <v-btn
+                      v-bind="menuProps"
+                      variant="text"
+                      size="small"
+                      class="font-weight-bold text-high-emphasis px-1 mr-1"
+                      style="min-width: 44px; height: 32px;"
+                      data-testid="btn-select-id-type"
+                    >
+                      {{ getDocPrefix(formData.identification_type) }}
+                      <v-icon icon="mdi-menu-down" size="small" />
+                    </v-btn>
+                  </template>
+                  <v-list density="compact" elevation="3" rounded="lg">
+                    <v-list-item
+                      v-for="t in idTypes"
+                      :key="t.value"
+                      :active="String(formData.identification_type) === String(t.value)"
+                      @click="formData.identification_type = t.value"
+                    >
+                      <v-list-item-title class="font-weight-medium">
+                        <span class="font-weight-bold text-primary mr-1">{{ t.prefix }}</span>
+                        <span class="text-caption text-medium-emphasis">({{ t.title.split(' - ')[1] }})</span>
+                      </v-list-item-title>
+                    </v-list-item>
+                  </v-list>
+                </v-menu>
+                <v-divider vertical class="my-2 mr-2" />
+              </template>
+            </v-text-field>
           </v-col>
         </v-row>
 
@@ -658,10 +700,10 @@ function showNotification(text: string, color: 'success' | 'error' | 'warning' =
       </div>
     </AppModal>
 
-    <!-- Modal: Confirmación de Eliminación -->
+    <!-- Modal: Confirmar Eliminación -->
     <AppModal
       v-model="deleteDialogOpen"
-      title="Confirmar Eliminación"
+      title="Eliminar"
       subtitle="¿Está seguro de que desea eliminar a esta persona del directorio?"
       submit-text="Eliminar"
       submit-icon="mdi-trash-can-outline"

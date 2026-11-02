@@ -2,7 +2,7 @@
 import { computed } from 'vue'
 import AppPaginatedSelect from './AppPaginatedSelect.vue'
 import AppMetadataFileField from './AppMetadataFileField.vue'
-import { resolveI18n, compileMetadataRules, type LocalizedString } from '@/utils/metadataValidation'
+import { resolveI18n, resolveFieldLabel, compileMetadataRules, type LocalizedString } from '@/utils/metadataValidation'
 
 export interface MetadataGroupDefinition {
   title?: LocalizedString
@@ -198,15 +198,36 @@ function normalizeField(field: MetadataFieldDefinition): NormalizedField {
 }
 
 function getFieldLabel(field: NormalizedField): string {
-  return (
-    resolveI18n(field.attributes.label, props.locale) ||
-    field.name ||
-    field.code
+  return resolveFieldLabel(
+    field.attributes.label,
+    field.name,
+    field.code,
+    props.locale
   )
 }
 
 function getFieldPlaceholder(field: NormalizedField): string {
   return resolveI18n(field.attributes.placeholder, props.locale) || ''
+}
+
+function getFieldUploadUrl(field: NormalizedField): string {
+  if (field.attributes.upload_url) {
+    return field.attributes.upload_url
+  }
+  if (field.attributes.locker_key) {
+    return `/v1/system/storage/${field.attributes.locker_key}`
+  }
+  return '/v1/system/storage/images/contracts/deliveries'
+}
+
+function isFieldMultiple(field: NormalizedField): boolean {
+  if (field.attributes.multiple !== undefined) {
+    return Boolean(field.attributes.multiple)
+  }
+  if (field.code === 'photos') {
+    return true
+  }
+  return false
 }
 
 function getFieldHint(field: NormalizedField): string {
@@ -285,11 +306,11 @@ function handleValueChange(fieldCode: string, value: any): void {
             :model-value="modelValue[field.code]"
             :label="getFieldLabel(field)"
             :hint="getFieldHint(field)"
-            :upload-url="field.attributes.upload_url"
+            :upload-url="getFieldUploadUrl(field)"
             :response-key="field.attributes.response_key || 'url'"
-            :accept="field.attributes.accept"
-            :max-size="field.attributes.max_size"
-            :multiple="Boolean(field.attributes.multiple)"
+            :accept="field.attributes.accept || 'image/jpeg,image/png,image/webp'"
+            :max-size="field.attributes.max_size || 5120"
+            :multiple="isFieldMultiple(field)"
             :disabled="disabled"
             :readonly="readonly || field.attributes.readonly"
             :density="density"

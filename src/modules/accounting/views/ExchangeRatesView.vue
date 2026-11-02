@@ -63,6 +63,11 @@ const rateForm = ref<{
   value: null
 })
 
+const isExistingRate = computed(() => {
+  if (!rateForm.value.date) return false
+  return ratesQuery.items.value.some((r) => r.date === rateForm.value.date)
+})
+
 function openRateModal(): void {
   rateForm.value = {
     date: new Date().toISOString().substring(0, 10),
@@ -295,7 +300,7 @@ onMounted(async () => {
       :persistent="true"
       :loading="isSubmittingRate"
       cancel-text="Cancelar"
-      submit-text="Guardar Tasa"
+      :submit-text="isExistingRate ? 'Actualizar' : 'Registrar'"
       submit-color="primary"
       submit-icon="mdi-check"
       submit-test-id="btn-save-rate"

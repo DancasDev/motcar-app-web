@@ -197,6 +197,22 @@ export async function getAccountReceivableById(
   return response.data
 }
 
+export async function updateAccountReceivable(
+  branchId: string | number,
+  receivableId: string | number,
+  payload: Partial<{
+    due_date: string
+    description: string
+    total_amount: number
+  }>
+): Promise<ApiResponse<{ id: number; affected: boolean }>> {
+  const response = await apiClient.put<ApiResponse<{ id: number; affected: boolean }>>(
+    ENDPOINTS.ACCOUNTING.RECEIVABLE_BY_ID(branchId, receivableId),
+    payload
+  )
+  return response.data
+}
+
 export async function syncOverdueReceivables(
   branchId: string | number
 ): Promise<ApiResponse<SyncOverdueSummary>> {

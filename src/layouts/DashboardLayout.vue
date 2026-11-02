@@ -113,26 +113,12 @@ const navItems: NavItem[] = [
     icon: 'mdi-handshake-outline',
     testId: 'nav-financing',
     children: [
-      { to: '/financing/groups', icon: 'mdi-account-group-outline', title: 'Grupos SAM', testId: 'nav-financing-groups' },
-      { to: '/financing/defaulters', icon: 'mdi-alert-circle-outline', title: 'Cartera de Morosos', testId: 'nav-financing-defaulters' },
-      { to: '/financing/calendar', icon: 'mdi-calendar-clock-outline', title: 'Calendario de Cobros', testId: 'nav-financing-calendar' },
-      { to: '/financing/awarded', icon: 'mdi-certificate-outline', title: 'Beneficios Entregados', testId: 'nav-financing-awarded' }
-    ]
-  },
-  {
-    title: 'Cobranzas y Caja',
-    icon: 'mdi-cash-register',
-    testId: 'nav-accounting',
-    children: [
-      { to: '/accounting/receivables', icon: 'mdi-cash-clock', title: 'Cuentas por Cobrar', testId: 'nav-accounting-receivables' },
-      { to: '/accounting/receipts', icon: 'mdi-receipt-text-outline', title: 'Recibos de Pago', testId: 'nav-accounting-receipts' },
-      { to: '/accounting/treasury', icon: 'mdi-bank-outline', title: 'Tesorería y Bancos', testId: 'nav-accounting-treasury' },
-      { to: '/accounting/exchange-rates', icon: 'mdi-currency-usd', title: 'Tasas de Cambio', testId: 'nav-accounting-rates' }
+      { to: '/financing/groups', icon: 'mdi-account-group-outline', title: 'Grupos SAM', testId: 'nav-financing-groups' }
     ]
   }
 ]
 
-const openedNavGroups = ref<string[]>(['Directorios', 'Autofinanciamiento Colectivo', 'Cobranzas y Caja'])
+const openedNavGroups = ref<string[]>(['Directorios', 'Autofinanciamiento Colectivo'])
 </script>
 
 <template>
@@ -305,7 +291,10 @@ const openedNavGroups = ref<string[]>(['Directorios', 'Autofinanciamiento Colect
                 :content="myStore.unreadCount"
                 :model-value="myStore.unreadCount > 0"
                 color="error"
-                floating
+                max="99"
+                :offset-x="-2"
+                :offset-y="-2"
+                class="topbar-notif-badge"
                 data-testid="notifications-badge"
               >
                 <v-icon icon="mdi-bell-outline" size="22" />
@@ -321,7 +310,7 @@ const openedNavGroups = ref<string[]>(['Directorios', 'Autofinanciamiento Colect
               <!-- Encabezado Estilo Referencia: Título y texto de acción al lado -->
               <div class="px-4 py-3 d-flex align-center justify-space-between border-b bg-white">
                 <span class="text-subtitle-2 font-weight-bold text-high-emphasis">
-                  Notifications
+                  Notificaciones
                 </span>
 
                 <button
@@ -332,7 +321,7 @@ const openedNavGroups = ref<string[]>(['Directorios', 'Autofinanciamiento Colect
                   data-testid="btn-mark-all-read"
                   @click="handleMarkAllAsRead"
                 >
-                  {{ isMarkingAllRead ? 'Marcando...' : 'Mark all as read' }}
+                  {{ isMarkingAllRead ? 'Marcando...' : 'Marcar todo como leído' }}
                 </button>
               </div>
 
@@ -351,8 +340,8 @@ const openedNavGroups = ref<string[]>(['Directorios', 'Autofinanciamiento Colect
                   class="text-center py-8 text-grey text-caption"
                 >
                   <v-icon icon="mdi-bell-outline" size="32" class="mb-2 text-medium-emphasis" />
-                  <div class="text-body-2 font-weight-medium text-high-emphasis">No notifications</div>
-                  <div class="text-caption text-medium-emphasis">You're all caught up!</div>
+                  <div class="text-body-2 font-weight-medium text-high-emphasis">Sin notificaciones</div>
+                  <div class="text-caption text-medium-emphasis">¡Estás al día!</div>
                 </div>
 
                 <template v-else>
@@ -386,7 +375,7 @@ const openedNavGroups = ref<string[]>(['Directorios', 'Autofinanciamiento Colect
 
                     <!-- Indicador de no leído: punto púrpura de la referencia -->
                     <div class="flex-shrink-0 pt-2 d-flex align-center justify-center">
-                      <span v-if="!item.read_at" class="notif-unread-dot" title="Unread"></span>
+                      <span v-if="!item.read_at" class="notif-unread-dot" title="No leída"></span>
                     </div>
                   </div>
                 </template>
@@ -673,6 +662,18 @@ const openedNavGroups = ref<string[]>(['Directorios', 'Autofinanciamiento Colect
   width: 40px !important;
   height: 40px !important;
   transition: background-color 0.2s ease;
+  overflow: visible !important;
+}
+
+.topbar-notif-badge :deep(.v-badge__badge) {
+  font-size: 11px !important;
+  font-weight: 700 !important;
+  height: 18px !important;
+  min-width: 18px !important;
+  padding: 0 4px !important;
+  border: 1.5px solid #ffffff !important;
+  line-height: 1 !important;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.15) !important;
 }
 
 .topbar-icon-btn:hover {

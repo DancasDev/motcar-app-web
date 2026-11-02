@@ -12,16 +12,85 @@ export interface MetadataRuleItem {
 export type LocalizedString = string | Record<string, string> | null | undefined
 
 /**
+ * Diccionario canónico de traducción al español para códigos de campos de metadatos del sistema.
+ */
+export const METADATA_LABELS_ES: Record<string, string> = {
+  brand: 'Marca',
+  model: 'Modelo',
+  year: 'Año',
+  plate: 'Placa',
+  reference_value: 'Valor de Referencia ($)',
+  chassis_serial: 'Serial de Chasis',
+  engine_serial: 'Serial de Motor',
+  color: 'Color',
+  photos: 'Fotografías del Vehículo',
+  photo: 'Fotografía',
+  bank_code: 'Código de Banco',
+  bank_name: 'Banco',
+  phone_number: 'Teléfono',
+  id_document: 'Cédula / Documento de Identidad',
+  account_number: 'Número de Cuenta',
+  beneficiary_name: 'Nombre del Beneficiario',
+  account_holder: 'Titular de la Cuenta',
+  email: 'Correo Electrónico',
+  description: 'Descripción',
+  notes: 'Notas',
+  address: 'Dirección'
+}
+
+/**
  * Resuelve una cadena que puede estar en formato i18n objeto (ej: { es: "Nombre", en: "Name" })
- * o como cadena plana.
+ * o como cadena plana o JSON serializado.
  */
 export function resolveI18n(val: LocalizedString, locale: string = 'es'): string {
   if (!val) return ''
-  if (typeof val === 'string') return val
   if (typeof val === 'object') {
     return val[locale] || val['es'] || val['en'] || Object.values(val)[0] || ''
   }
+  if (typeof val === 'string') {
+    const trimmed = val.trim()
+    if (trimmed.startsWith('{') && trimmed.endsWith('}')) {
+      try {
+        const parsed = JSON.parse(trimmed)
+        if (typeof parsed === 'object' && parsed !== null) {
+          return parsed[locale] || parsed['es'] || parsed['en'] || Object.values(parsed)[0] || ''
+        }
+      } catch {
+        // No es JSON válido, devolver como string plano
+      }
+    }
+    return val
+  }
   return String(val)
+}
+
+/**
+ * Resuelve la etiqueta visible para un campo de metadatos en español.
+ * Prioriza atributos explícitos (label), luego nombre, luego diccionario español por código.
+ */
+export function resolveFieldLabel(
+  label?: LocalizedString,
+  name?: LocalizedString,
+  code?: string,
+  locale: string = 'es'
+): string {
+  const resolvedLabel = resolveI18n(label, locale)
+  if (resolvedLabel && resolvedLabel.trim() !== '') return resolvedLabel
+
+  const resolvedName = resolveI18n(name, locale)
+  if (resolvedName && resolvedName.trim() !== '') return resolvedName
+
+  if (code) {
+    const normalizedCode = code.toLowerCase().trim()
+    if (METADATA_LABELS_ES[normalizedCode]) {
+      return METADATA_LABELS_ES[normalizedCode]
+    }
+    return code
+      .replace(/_/g, ' ')
+      .replace(/\b\w/g, (c) => c.toUpperCase())
+  }
+
+  return ''
 }
 
 export type VuetifyValidationRule = (value: any) => boolean | string
