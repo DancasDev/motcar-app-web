@@ -125,6 +125,12 @@ export const routes: RouteRecordRaw[] = [
         name: 'AccountingExchangeRates',
         component: () => import('@/modules/accounting/views/ExchangeRatesView.vue'),
         meta: { title: 'Tasas de Cambio - Motcar App', requiresAuth: true, showBranchSelector: true }
+      },
+      {
+        path: 'accounting/payment-methods',
+        name: 'AccountingPaymentMethods',
+        component: () => import('@/modules/accounting/views/PaymentMethodsView.vue'),
+        meta: { title: 'Métodos de Pago - Motcar App', requiresAuth: true, showBranchSelector: true }
       }
     ]
   },

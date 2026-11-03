@@ -145,10 +145,22 @@ watch(
       <v-col cols="12" md="6">
         <v-card elevation="0" rounded="lg" class="border bg-white fill-height">
           <v-card-item class="py-3 px-4 border-b">
-            <v-card-title class="text-subtitle-1 font-weight-bold d-flex align-center ga-2 text-high-emphasis">
-              <v-icon icon="mdi-bank" color="primary" />
-              Cuentas Receptoras de Pago
-            </v-card-title>
+            <div class="d-flex align-center justify-space-between">
+              <v-card-title class="text-subtitle-1 font-weight-bold d-flex align-center ga-2 text-high-emphasis">
+                <v-icon icon="mdi-bank" color="primary" />
+                Cuentas Receptoras de Pago
+              </v-card-title>
+              <v-btn
+                variant="text"
+                color="primary"
+                size="small"
+                to="/accounting/payment-methods"
+                append-icon="mdi-arrow-right"
+                class="text-none font-weight-medium"
+              >
+                Gestionar
+              </v-btn>
+            </div>
           </v-card-item>
 
           <v-table density="compact" class="text-body-2">

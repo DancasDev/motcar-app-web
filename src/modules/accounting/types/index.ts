@@ -85,6 +85,16 @@ export interface PaymentAccountItem {
   updated_at?: string
 }
 
+export interface CreatePaymentAccountPayload {
+  category_id?: number | string
+  currency_id: number | string
+  name: string
+  metadata?: Record<string, unknown> | null
+  is_disabled?: '0' | '1' | boolean
+}
+
+export type UpdatePaymentAccountPayload = Partial<CreatePaymentAccountPayload>
+
 /**
  * Conceptos de Cobro
  */

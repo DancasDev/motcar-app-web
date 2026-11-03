@@ -10,6 +10,8 @@ import type {
   CreateExchangeRatePayload,
   PaymentCategoryItem,
   PaymentAccountItem,
+  CreatePaymentAccountPayload,
+  UpdatePaymentAccountPayload,
   ReceivableConceptItem,
   AccountReceivableItem,
   SyncOverdueSummary,
@@ -168,6 +170,39 @@ export async function fetchCategoryPaymentAccounts(
   const response = await apiClient.get<PaginatedResponse<PaymentAccountItem>>(
     ENDPOINTS.ACCOUNTING.CATEGORY_PAYMENT_ACCOUNTS(categoryId),
     { params }
+  )
+  return response.data
+}
+
+export async function createPaymentAccount(
+  categoryId: string | number,
+  payload: CreatePaymentAccountPayload
+): Promise<ApiResponse<{ id: number }>> {
+  const response = await apiClient.post<ApiResponse<{ id: number }>>(
+    ENDPOINTS.ACCOUNTING.CATEGORY_PAYMENT_ACCOUNTS(categoryId),
+    payload
+  )
+  return response.data
+}
+
+export async function updatePaymentAccount(
+  categoryId: string | number,
+  accountId: string | number,
+  payload: UpdatePaymentAccountPayload
+): Promise<ApiResponse<void>> {
+  const response = await apiClient.put<ApiResponse<void>>(
+    ENDPOINTS.ACCOUNTING.CATEGORY_PAYMENT_ACCOUNT_BY_ID(categoryId, accountId),
+    payload
+  )
+  return response.data
+}
+
+export async function deletePaymentAccount(
+  categoryId: string | number,
+  accountId: string | number
+): Promise<ApiResponse<void>> {
+  const response = await apiClient.delete<ApiResponse<void>>(
+    ENDPOINTS.ACCOUNTING.CATEGORY_PAYMENT_ACCOUNT_BY_ID(categoryId, accountId)
   )
   return response.data
 }

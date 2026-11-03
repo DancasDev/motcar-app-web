@@ -121,7 +121,8 @@ const navItems: NavItem[] = [
     icon: 'mdi-cash-register',
     testId: 'nav-accounting',
     children: [
-      { to: '/accounting/exchange-rates', icon: 'mdi-currency-usd', title: 'Tasas de Cambio', testId: 'nav-accounting-rates' }
+      { to: '/accounting/exchange-rates', icon: 'mdi-currency-usd', title: 'Tasas de Cambio', testId: 'nav-accounting-rates' },
+      { to: '/accounting/payment-methods', icon: 'mdi-credit-card-outline', title: 'Métodos de Pago', testId: 'nav-accounting-payment-methods' }
     ]
   }
 ]
