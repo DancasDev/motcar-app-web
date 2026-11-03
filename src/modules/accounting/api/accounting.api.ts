@@ -127,6 +127,16 @@ export async function updateExchangeRate(
   return response.data
 }
 
+export async function deleteExchangeRate(
+  currencyId: string | number,
+  rateId: string | number
+): Promise<ApiResponse<void>> {
+  const response = await apiClient.delete<ApiResponse<void>>(
+    ENDPOINTS.ACCOUNTING.EXCHANGE_RATE_BY_ID(currencyId, rateId)
+  )
+  return response.data
+}
+
 // ---------------------------------------------------------------------
 // 2. Canales de Pago: Categorías y Cuentas Receptoras
 // ---------------------------------------------------------------------

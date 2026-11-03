@@ -115,10 +115,18 @@ const navItems: NavItem[] = [
     children: [
       { to: '/financing/groups', icon: 'mdi-account-group-outline', title: 'Grupos SAM', testId: 'nav-financing-groups' }
     ]
+  },
+  {
+    title: 'Cobranzas y Caja',
+    icon: 'mdi-cash-register',
+    testId: 'nav-accounting',
+    children: [
+      { to: '/accounting/exchange-rates', icon: 'mdi-currency-usd', title: 'Tasas de Cambio', testId: 'nav-accounting-rates' }
+    ]
   }
 ]
 
-const openedNavGroups = ref<string[]>(['Directorios', 'Autofinanciamiento Colectivo'])
+const openedNavGroups = ref<string[]>(['Directorios', 'Autofinanciamiento Colectivo', 'Cobranzas y Caja'])
 </script>
 
 <template>

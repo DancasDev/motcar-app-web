@@ -64,10 +64,12 @@ export const useAccountingStore = defineStore('accounting', () => {
   ): Promise<ExchangeRateItem | null> {
     try {
       const res = await apiFetchCurrentExchangeRate(currencyId)
-      if (res.data) {
+      if (res.data && res.data.value !== null) {
         currentRates.value[String(currencyId)] = res.data
+        return res.data
       }
-      return res.data
+      delete currentRates.value[String(currencyId)]
+      return null
     } catch (err) {
       console.error(`Error loading exchange rate for currency ${currencyId}:`, err)
       return null
