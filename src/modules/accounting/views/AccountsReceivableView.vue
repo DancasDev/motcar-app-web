@@ -114,19 +114,14 @@ async function handleSyncOverdue(): Promise<void> {
 function goToCreateReceipt(receivable?: AccountReceivableItem): void {
   if (receivable) {
     router.push({
-      path: '/accounting/receipts',
+      path: '/accounting/pos',
       query: {
-        action: 'new',
-        receivable_id: String(receivable.id),
-        client_id: String(receivable.client_id),
-        client_name: `${receivable.client_first_name || ''} ${receivable.client_last_name || ''}`.trim(),
-        amount: String(Math.max(0, Number(receivable.total_amount) - Number(receivable.paid_amount)))
+        client_id: String(receivable.client_id)
       }
     })
   } else {
     router.push({
-      path: '/accounting/receipts',
-      query: { action: 'new' }
+      path: '/accounting/pos'
     })
   }
 }

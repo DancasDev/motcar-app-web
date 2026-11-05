@@ -121,6 +121,9 @@ const navItems: NavItem[] = [
     icon: 'mdi-cash-register',
     testId: 'nav-accounting',
     children: [
+      { to: '/accounting/pos', icon: 'mdi-point-of-sale', title: 'Punto de Cobro', testId: 'nav-accounting-pos' },
+      { to: '/accounting/receipts', icon: 'mdi-receipt-text-outline', title: 'Recibos', testId: 'nav-accounting-receipts' },
+      { to: '/accounting/receivables', icon: 'mdi-account-cash-outline', title: 'Cuentas por Cobrar', testId: 'nav-accounting-receivables' },
       { to: '/accounting/exchange-rates', icon: 'mdi-currency-usd', title: 'Tasas de Cambio', testId: 'nav-accounting-rates' },
       { to: '/accounting/payment-methods', icon: 'mdi-credit-card-outline', title: 'Métodos de Pago', testId: 'nav-accounting-payment-methods' }
     ]

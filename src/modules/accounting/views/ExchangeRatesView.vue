@@ -6,8 +6,7 @@ import { useDataQuery } from '@/composables/useDataQuery'
 import {
   fetchExchangeRates,
   createExchangeRate,
-  updateExchangeRate,
-  deleteExchangeRate
+  updateExchangeRate
 } from '../api/accounting.api'
 import type { ExchangeRateItem } from '../types'
 import AppModal from '@/components/common/AppModal.vue'
@@ -180,39 +179,6 @@ async function handleSaveRate(): Promise<void> {
   }
 }
 
-// ---------------------------------------------------------------------
-// Eliminar Tasa
-// ---------------------------------------------------------------------
-const deleteDialogOpen = ref(false)
-const rateToDelete = ref<ExchangeRateItem | null>(null)
-const isDeletingRate = ref(false)
-
-function promptDeleteRate(item: ExchangeRateItem): void {
-  rateToDelete.value = item
-  deleteDialogOpen.value = true
-}
-
-async function handleConfirmDelete(): Promise<void> {
-  if (!rateToDelete.value) return
-  isDeletingRate.value = true
-  try {
-    await deleteExchangeRate(vesCurrency.value.id, rateToDelete.value.id)
-    showMessage('Tasa eliminada exitosamente.')
-    deleteDialogOpen.value = false
-    rateToDelete.value = null
-    await refreshAll()
-  } catch (err: unknown) {
-    const axiosErr = err as { response?: { data?: { messages?: Record<string, string> | string } } }
-    const serverMsg =
-      typeof axiosErr.response?.data?.messages === 'string'
-        ? axiosErr.response.data.messages
-        : Object.values(axiosErr.response?.data?.messages || {})[0]
-    const msg = serverMsg || (err instanceof Error ? err.message : 'Error al eliminar la tasa.')
-    showMessage(msg, 'error')
-  } finally {
-    isDeletingRate.value = false
-  }
-}
 
 // ---------------------------------------------------------------------
 // Feedback
@@ -375,14 +341,6 @@ onMounted(async () => {
                   data-testid="menu-item-edit-rate"
                   @click="openEditDialog(item)"
                 />
-                <v-divider class="my-1" />
-                <v-list-item
-                  prepend-icon="mdi-trash-can-outline"
-                  title="Eliminar"
-                  base-color="error"
-                  data-testid="menu-item-delete-rate"
-                  @click="promptDeleteRate(item)"
-                />
               </v-list>
             </v-menu>
           </div>
@@ -432,32 +390,6 @@ onMounted(async () => {
       </v-form>
     </AppModal>
 
-    <!-- Modal: Confirmar Eliminación -->
-    <AppModal
-      v-model="deleteDialogOpen"
-      title="Eliminar"
-      subtitle="Esta acción eliminará la cotización de forma permanente"
-      max-width="460"
-      :loading="isDeletingRate"
-      submit-text="Eliminar"
-      submit-color="error"
-      submit-icon="mdi-trash-can"
-      @submit="handleConfirmDelete"
-    >
-      <div class="py-2">
-        <p class="text-body-2 text-high-emphasis mb-3">
-          ¿Estás seguro de que deseas eliminar la tasa del
-          <strong>{{ rateToDelete?.date }}</strong>?
-        </p>
-        <v-alert
-          type="warning"
-          variant="tonal"
-          density="compact"
-          text="El registro se eliminará y se recalculará la tasa vigente en el sistema."
-          rounded="lg"
-        />
-      </div>
-    </AppModal>
 
     <!-- Snackbar de Notificaciones -->
     <v-snackbar

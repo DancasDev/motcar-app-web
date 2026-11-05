@@ -42,7 +42,8 @@ const receiptsQuery = useDataQuery<ReceiptItem>(
   },
   {
     initialItemsPerPage: 10,
-    searchFields: ['code', 'client_first_name', 'client_last_name', 'collector_first_name']
+    searchFields: ['code', 'client_first_name', 'client_last_name', 'collector_first_name'],
+    defaultOrder: { id: 'DESC' }
   }
 )
 
@@ -405,13 +406,23 @@ watch(
       <!-- Acciones Desktop -->
       <div class="d-none d-sm-flex align-center ga-2">
         <v-btn
+          variant="outlined"
           color="primary"
           prepend-icon="mdi-plus"
-          class="text-none font-weight-bold px-4"
-          data-testid="btn-create-receipt"
+          class="text-none font-weight-medium"
+          data-testid="btn-create-receipt-manual"
           @click="openCreateReceiptDialog()"
         >
-          Emitir Recibo
+          Emisión Manual
+        </v-btn>
+        <v-btn
+          color="primary"
+          prepend-icon="mdi-point-of-sale"
+          class="text-none font-weight-bold px-4"
+          data-testid="btn-go-to-pos"
+          to="/accounting/pos"
+        >
+          Punto de Cobro
         </v-btn>
       </div>
 
@@ -429,8 +440,13 @@ watch(
           </template>
           <v-list density="compact" rounded="lg" elevation="3">
             <v-list-item
+              prepend-icon="mdi-point-of-sale"
+              title="Punto de Cobro"
+              to="/accounting/pos"
+            />
+            <v-list-item
               prepend-icon="mdi-plus"
-              title="Emitir Recibo"
+              title="Emisión Manual"
               @click="openCreateReceiptDialog()"
             />
           </v-list>

@@ -100,7 +100,13 @@ export const routes: RouteRecordRaw[] = [
       },
       {
         path: 'accounting',
-        redirect: '/accounting/receivables'
+        redirect: '/accounting/pos'
+      },
+      {
+        path: 'accounting/pos',
+        name: 'AccountingPos',
+        component: () => import('@/modules/accounting/views/PosCashierView.vue'),
+        meta: { title: 'Punto de Cobro (POS) - Motcar App', requiresAuth: true, showBranchSelector: true }
       },
       {
         path: 'accounting/receivables',

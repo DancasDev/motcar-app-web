@@ -9,9 +9,7 @@ import {
   fetchReceipts as apiFetchReceipts,
   getReceiptDetail as apiGetReceiptDetail,
   createReceipt as apiCreateReceipt,
-  addReceiptItem as apiAddReceiptItem,
   addReceiptItemsBatch as apiAddReceiptItemsBatch,
-  addReceiptPayment as apiAddReceiptPayment,
   addReceiptPaymentsBatch as apiAddReceiptPaymentsBatch,
   updateReceiptStatus as apiUpdateReceiptStatus,
   downloadReceiptPdf as apiDownloadReceiptPdf,
@@ -164,6 +162,26 @@ export const useAccountingStore = defineStore('accounting', () => {
   }
 
   /**
+   * Extrae mensaje de error si una operación batch devuelve 207 Multi-Status con ítems fallidos
+   */
+  function assertBatchSuccess(batchRes: unknown, fallbackMsg: string): void {
+    const resObj = batchRes as {
+      status?: number
+      data?: Array<{ status?: number; messages?: Record<string, string> | string }>
+    }
+    if (resObj?.status === 207 && Array.isArray(resObj.data)) {
+      const failed = resObj.data.find((item) => (item.status ?? 200) >= 400)
+      if (failed) {
+        const msg =
+          typeof failed.messages === 'string'
+            ? failed.messages
+            : Object.values(failed.messages || {})[0] || fallbackMsg
+        throw new Error(msg)
+      }
+    }
+  }
+
+  /**
    * Orquestación de emisión completa de un recibo de cobro
    */
   async function createFullReceipt(
@@ -171,6 +189,7 @@ export const useAccountingStore = defineStore('accounting', () => {
     payload: FullReceiptEmissionPayload
   ): Promise<number> {
     isLoading.value = true
+    let createdReceiptId: number | null = null
     try {
       // 1. Crear cabecera de recibo en estado Borrador
       const receiptRes = await apiCreateReceipt(branchId, {
@@ -179,33 +198,22 @@ export const useAccountingStore = defineStore('accounting', () => {
         notes: payload.notes
       })
       const receiptId = receiptRes.data.id
+      createdReceiptId = receiptId
 
       // 2. Asociar cuentas por cobrar (ítems)
       if (payload.items.length > 0) {
-        try {
-          await apiAddReceiptItemsBatch(
-            branchId,
-            receiptId,
-            payload.items.map((id) => ({ receivable_id: id }))
-          )
-        } catch {
-          // Fallback uno a uno si el endpoint batch no aplica
-          for (const recId of payload.items) {
-            await apiAddReceiptItem(branchId, receiptId, { receivable_id: recId })
-          }
-        }
+        const itemsRes = await apiAddReceiptItemsBatch(
+          branchId,
+          receiptId,
+          payload.items.map((id) => ({ receivable_id: id }))
+        )
+        assertBatchSuccess(itemsRes, 'Error al asociar los conceptos por cobrar al recibo.')
       }
 
       // 3. Registrar medios de pago
       if (payload.payments.length > 0) {
-        try {
-          await apiAddReceiptPaymentsBatch(branchId, receiptId, payload.payments)
-        } catch {
-          // Fallback uno a uno
-          for (const payment of payload.payments) {
-            await apiAddReceiptPayment(branchId, receiptId, payment)
-          }
-        }
+        const paymentsRes = await apiAddReceiptPaymentsBatch(branchId, receiptId, payload.payments)
+        assertBatchSuccess(paymentsRes, 'Error al registrar las formas de pago del recibo.')
       }
 
       // 4. Confirmación inmediata (opcional según selección del usuario)
@@ -214,6 +222,17 @@ export const useAccountingStore = defineStore('accounting', () => {
       }
 
       return receiptId
+    } catch (err) {
+      // Si se creó un borrador y falló un paso posterior, anularlo para no dejar borradores huérfanos
+      if (createdReceiptId !== null && payload.confirmImmediately) {
+        await apiUpdateReceiptStatus(branchId, createdReceiptId, {
+          status: '2',
+          cancellation_reason: 'Emisión incompleta descartada automáticamente'
+        }).catch(() => {
+          // Ignorar si no requiere limpieza adicional
+        })
+      }
+      throw err
     } finally {
       isLoading.value = false
     }
