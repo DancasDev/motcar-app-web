@@ -82,9 +82,9 @@ export function buildDqbParams(
       'BOTH'
     ])
 
-    // Se agrupa como orGroupSearch para actuar como paréntesis lógico en SQL
+    // Se agrupa como groupSearch para actuar como paréntesis lógico en SQL combinado con AND
     filtersList.push({
-      orGroupSearch: searchTuples
+      groupSearch: searchTuples
     })
   }
 

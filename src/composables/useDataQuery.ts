@@ -11,6 +11,7 @@ export interface UseDataQueryOptions extends QueryBuilderConfig {
   initialPage?: number
   initialItemsPerPage?: number
   debounceMs?: number
+  initialSortBy?: Array<{ key: string; order: 'asc' | 'desc' }>
 }
 
 /**
@@ -28,7 +29,15 @@ export function useDataQuery<T>(
   // Opciones de paginación y orden
   const page = ref<number>(options.initialPage || 1)
   const itemsPerPage = ref<number>(options.initialItemsPerPage || 25)
-  const sortBy = ref<Array<{ key: string; order: 'asc' | 'desc' }>>([])
+  const defaultSortBy: Array<{ key: string; order: 'asc' | 'desc' }> = []
+  if (options.initialSortBy) {
+    defaultSortBy.push(...options.initialSortBy)
+  } else if (options.defaultOrder) {
+    for (const [key, order] of Object.entries(options.defaultOrder)) {
+      defaultSortBy.push({ key, order: (String(order).toLowerCase() === 'desc' ? 'desc' : 'asc') })
+    }
+  }
+  const sortBy = ref<Array<{ key: string; order: 'asc' | 'desc' }>>(defaultSortBy)
   const search = ref<string>('')
   const staticFilters = ref<DqbFilterItem[]>(options.staticFilters || [])
 

@@ -118,6 +118,8 @@ export interface AccountReceivableItem {
   client_id: number | string
   client_first_name?: string
   client_last_name?: string
+  client_identification_type?: string | number | null
+  client_identification_value?: string | null
   receivable_concept_id?: number | string
   concept_code?: string
   concept_name?: string
