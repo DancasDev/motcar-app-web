@@ -10,6 +10,11 @@ import {
   updatePaymentAccount,
   deletePaymentAccount
 } from '../api/accounting.api'
+import { fetchMetadataSchemaRender } from '@/modules/system/api/system.api'
+import AppMetadataRenderer, { type MetadataSchemaPayload } from '@/components/common/AppMetadataRenderer.vue'
+import AppChipFilter from '@/components/common/AppChipFilter.vue'
+import { METADATA_LABELS_ES } from '@/utils/metadataValidation'
+import type { DqbFilterTuple } from '@/types/query'
 import type {
   PaymentAccountItem,
   PaymentCategoryItem,
@@ -24,7 +29,6 @@ const accountingStore = useAccountingStore()
 // 1. Categorías y Monedas
 // ---------------------------------------------------------------------
 const categories = ref<PaymentCategoryItem[]>([])
-const selectedCategoryFilter = ref<number | string | null>(null)
 
 async function loadCategories(): Promise<void> {
   try {
@@ -34,6 +38,22 @@ async function loadCategories(): Promise<void> {
     console.error('Error loading payment categories:', err)
   }
 }
+
+const categoryOptions = computed(() => {
+  return (categories.value || []).map((cat) => ({
+    id: Number(cat.id),
+    name: cat.name,
+    metadata_schema_id: cat.metadata_schema_id ? Number(cat.metadata_schema_id) : null
+  }))
+})
+
+const categoryFilterOptions = computed(() => {
+  return (categories.value || []).map((cat) => ({
+    text: cat.name,
+    title: cat.name,
+    value: Number(cat.id)
+  }))
+})
 
 const currencyOptions = computed(() => {
   return (accountingStore.currencies || []).map((c) => ({
@@ -56,16 +76,15 @@ const accountsQuery = useDataQuery<PaymentAccountItem>(
   }
 )
 
-// Filtro reactivo por categoría
-watch(selectedCategoryFilter, (catId) => {
-  if (catId) {
-    accountsQuery.staticFilters.value = [['category_id', catId]]
+function handleCategoryFilterChange(dqbFilter: DqbFilterTuple[] | null): void {
+  if (dqbFilter && dqbFilter.length > 0) {
+    accountsQuery.staticFilters.value = dqbFilter
   } else {
     accountsQuery.staticFilters.value = []
   }
   accountsQuery.page.value = 1
   accountsQuery.refresh()
-})
+}
 
 const accountHeaders = [
   { title: 'Nombre / Canal', key: 'name', align: 'start' as const, sortable: true },
@@ -111,12 +130,10 @@ function formatAccountDetails(item: PaymentAccountItem): string {
 
   if (catId === 3) {
     // Transferencia
-    const bank = (meta.bank_name as string) || ''
     const acc = (meta.account_number as string) || ''
     const doc = (meta.id_document as string) || ''
     const holder = (meta.beneficiary_name as string) || ''
     const parts = []
-    if (bank) parts.push(bank)
     if (acc) parts.push(`Cta: ${acc}`)
     if (doc || holder) parts.push(`Titular: ${holder} (${doc})`.trim())
     return parts.join(' • ') || 'Sin datos bancarios'
@@ -124,13 +141,13 @@ function formatAccountDetails(item: PaymentAccountItem): string {
 
   if (catId === 2) {
     // Pago Móvil
-    const bank = (meta.bank_code as string) || ''
-    const phone = (meta.phone_number as string) || ''
     const doc = (meta.id_document as string) || ''
+    const phone = (meta.phone_number as string) || ''
+    const holder = (meta.account_holder as string) || ''
     const parts = []
-    if (bank) parts.push(`Banco: ${bank}`)
-    if (phone) parts.push(`Telf: ${phone}`)
     if (doc) parts.push(`C.I: ${doc}`)
+    if (phone) parts.push(`Telf: ${phone}`)
+    if (holder) parts.push(`Propietario: ${holder}`)
     return parts.join(' • ') || 'Sin datos de pago móvil'
   }
 
@@ -139,6 +156,11 @@ function formatAccountDetails(item: PaymentAccountItem): string {
     const email = (meta.email as string) || ''
     const holder = (meta.account_holder as string) || ''
     return [email, holder ? `(${holder})` : ''].filter(Boolean).join(' ') || 'Sin datos de Zelle'
+  }
+
+  const entries = Object.entries(meta).filter(([_, v]) => v !== null && v !== undefined && v !== '')
+  if (entries.length > 0) {
+    return entries.map(([k, v]) => `${METADATA_LABELS_ES[k] || k}: ${v}`).join(' • ')
   }
 
   return 'Caja receptora de efectivo'
@@ -160,71 +182,110 @@ const accountModalOpen = ref(false)
 const isSubmittingAccount = ref(false)
 const editingAccountId = ref<string | number | null>(null)
 
+// Gestión de Esquema de Metadatos Dinámicos
+const categoryMetadataSchema = ref<MetadataSchemaPayload | null>(null)
+const isLoadingSchema = ref(false)
+const metadataFormData = ref<Record<string, any>>({})
+const schemaCache = new Map<number | string, MetadataSchemaPayload>()
+
+const hasMetadataFields = computed(() => {
+  if (!categoryMetadataSchema.value?.fields) return false
+  if (Array.isArray(categoryMetadataSchema.value.fields)) {
+    return categoryMetadataSchema.value.fields.length > 0
+  }
+  return Object.keys(categoryMetadataSchema.value.fields).length > 0
+})
+
+async function loadCategoryMetadataSchema(categoryId: number | null): Promise<void> {
+  if (!categoryId) {
+    categoryMetadataSchema.value = null
+    return
+  }
+  const category = categoryOptions.value.find((c) => c.id === categoryId)
+  const schemaId = category?.metadata_schema_id
+  if (!schemaId) {
+    categoryMetadataSchema.value = null
+    return
+  }
+
+  if (schemaCache.has(schemaId)) {
+    categoryMetadataSchema.value = schemaCache.get(schemaId)!
+    return
+  }
+
+  isLoadingSchema.value = true
+  try {
+    const res = await fetchMetadataSchemaRender(schemaId)
+    const schema = (res.data || null) as MetadataSchemaPayload | null
+    if (schema) {
+      schemaCache.set(schemaId, schema)
+    }
+    categoryMetadataSchema.value = schema
+  } catch (err) {
+    console.error('Error al cargar esquema de metadatos:', err)
+    categoryMetadataSchema.value = null
+  } finally {
+    isLoadingSchema.value = false
+  }
+}
+
 interface AccountFormData {
   category_id: number | null
   currency_id: number | null
   name: string
   is_active: boolean
-  // Metadata fields
-  bank_name: string
-  account_number: string
-  id_document: string
-  beneficiary_name: string
-  bank_code: string
-  phone_number: string
-  email: string
-  account_holder: string
 }
 
 const formDefaults: AccountFormData = {
   category_id: null,
   currency_id: null,
   name: '',
-  is_active: true,
-  bank_name: '',
-  account_number: '',
-  id_document: '',
-  beneficiary_name: '',
-  bank_code: '',
-  phone_number: '',
-  email: '',
-  account_holder: ''
+  is_active: true
 }
 
 const form = ref<AccountFormData>({ ...formDefaults })
 
-function openCreateModal(): void {
+// Reaccionar al cambio de categoría para cargar el esquema dinámico correspondiente
+watch(
+  () => form.value.category_id,
+  async (newCatId, oldCatId) => {
+    if (newCatId !== oldCatId) {
+      if (!editingAccountId.value) {
+        metadataFormData.value = {}
+      }
+      await loadCategoryMetadataSchema(newCatId)
+    }
+  }
+)
+
+async function openCreateModal(): Promise<void> {
   editingAccountId.value = null
   const defaultCurrency = accountingStore.currencies.find((c) => c.code === 'USD')?.id || 1
-  const defaultCategory = categories.value[0]?.id ? Number(categories.value[0].id) : 3
+  const defaultCategory = categoryOptions.value[0]?.id ? Number(categoryOptions.value[0].id) : 1
 
+  metadataFormData.value = {}
   form.value = {
     ...formDefaults,
     currency_id: Number(defaultCurrency),
     category_id: defaultCategory
   }
   accountModalOpen.value = true
+  await loadCategoryMetadataSchema(defaultCategory)
 }
 
-function openEditModal(item: PaymentAccountItem): void {
+async function openEditModal(item: PaymentAccountItem): Promise<void> {
   editingAccountId.value = item.id
   const meta = parseMetadata(item.metadata)
+  metadataFormData.value = { ...meta }
 
   form.value = {
     category_id: Number(item.category_id),
     currency_id: Number(item.currency_id),
     name: item.name || '',
-    is_active: String(item.is_disabled) === '0',
-    bank_name: (meta.bank_name as string) || '',
-    account_number: (meta.account_number as string) || '',
-    id_document: (meta.id_document as string) || '',
-    beneficiary_name: (meta.beneficiary_name as string) || '',
-    bank_code: (meta.bank_code as string) || '',
-    phone_number: (meta.phone_number as string) || '',
-    email: (meta.email as string) || '',
-    account_holder: (meta.account_holder as string) || ''
+    is_active: String(item.is_disabled) === '0'
   }
   accountModalOpen.value = true
+  await loadCategoryMetadataSchema(Number(item.category_id))
 }
 
 async function handleSaveAccount(): Promise<void> {
@@ -241,37 +302,14 @@ async function handleSaveAccount(): Promise<void> {
     return
   }
 
-  // Validaciones condicionales según categoría
   const catId = Number(form.value.category_id)
-  const metaPayload: Record<string, string> = {}
 
-  if (catId === 3) {
-    // Transferencia
-    if (!form.value.account_number.trim()) {
-      showMessage('Ingresa el número de cuenta bancaria.', 'error')
-      return
+  // Extraer valores limpios de metadatos dinámicos
+  const cleanedMetadata: Record<string, any> = {}
+  for (const [key, val] of Object.entries(metadataFormData.value)) {
+    if (val !== undefined && val !== null && String(val).trim() !== '') {
+      cleanedMetadata[key] = typeof val === 'string' ? val.trim() : val
     }
-    metaPayload.bank_name = form.value.bank_name.trim()
-    metaPayload.account_number = form.value.account_number.trim()
-    metaPayload.id_document = form.value.id_document.trim()
-    metaPayload.beneficiary_name = form.value.beneficiary_name.trim()
-  } else if (catId === 2) {
-    // Pago Móvil
-    if (!form.value.phone_number.trim() || !form.value.id_document.trim()) {
-      showMessage('El teléfono y la cédula/RIF son obligatorios para Pago Móvil.', 'error')
-      return
-    }
-    metaPayload.bank_code = form.value.bank_code.trim()
-    metaPayload.phone_number = form.value.phone_number.trim()
-    metaPayload.id_document = form.value.id_document.trim()
-  } else if (catId === 4) {
-    // Zelle
-    if (!form.value.email.trim()) {
-      showMessage('El correo electrónico es obligatorio para cuentas Zelle.', 'error')
-      return
-    }
-    metaPayload.email = form.value.email.trim()
-    metaPayload.account_holder = form.value.account_holder.trim()
   }
 
   isSubmittingAccount.value = true
@@ -279,7 +317,7 @@ async function handleSaveAccount(): Promise<void> {
     const payload: CreatePaymentAccountPayload = {
       currency_id: Number(form.value.currency_id),
       name: form.value.name.trim(),
-      metadata: Object.keys(metaPayload).length > 0 ? metaPayload : null,
+      metadata: Object.keys(cleanedMetadata).length > 0 ? cleanedMetadata : null,
       is_disabled: form.value.is_active ? '0' : '1'
     }
 
@@ -415,14 +453,14 @@ onMounted(async () => {
     </div>
 
     <!-- ═══════════════════════════════════════════════════════════ -->
-    <!-- SEGUNDA SECCIÓN: BARRA DE BÚSQUEDA, FILTRO Y RECARGA          -->
+    <!-- SEGUNDA SECCIÓN: BARRA DE BÚSQUEDA (SECCIÓN SOLA, 7 COLS)   -->
     <!-- ═══════════════════════════════════════════════════════════ -->
-    <v-row density="compact" align="center" justify="space-between" class="mb-3">
-      <v-col cols="12" sm="7" md="6">
+    <v-row density="compact" class="mb-3">
+      <v-col cols="12" md="7">
         <v-text-field
           v-model="accountsQuery.search.value"
           prepend-inner-icon="mdi-magnify"
-          placeholder="Buscar por nombre de cuenta..."
+          placeholder="Buscar por nombre..."
           variant="solo"
           flat
           bg-color="white"
@@ -434,43 +472,42 @@ onMounted(async () => {
           data-testid="account-search-input"
         />
       </v-col>
-
-      <v-col cols="10" sm="4" md="4" class="d-flex align-center ga-2">
-        <v-select
-          v-model="selectedCategoryFilter"
-          :items="[{ id: null, name: 'Todas las categorías' }, ...categories]"
-          item-title="name"
-          item-value="id"
-          label="Filtrar categoría"
-          variant="solo"
-          flat
-          bg-color="white"
-          density="comfortable"
-          rounded="lg"
-          hide-details
-          class="border elevation-0"
-          data-testid="category-filter-select"
-        />
-      </v-col>
-
-      <v-col cols="auto">
-        <v-tooltip text="Recargar la tabla" location="top" color="#1E293B">
-          <template #activator="{ props: tooltipProps }">
-            <v-btn
-              v-bind="tooltipProps"
-              icon="mdi-refresh"
-              variant="flat"
-              color="white"
-              size="small"
-              class="border rounded-circle flex-shrink-0"
-              :loading="accountsQuery.isLoading.value"
-              data-testid="btn-refresh-accounts"
-              @click="refreshAll"
-            />
-          </template>
-        </v-tooltip>
-      </v-col>
     </v-row>
+
+    <!-- ═══════════════════════════════════════════════════════════ -->
+    <!-- TERCERA SECCIÓN: FILTROS DE CATEGORÍA Y BOTÓN DE RECARGA      -->
+    <!-- ═══════════════════════════════════════════════════════════ -->
+    <div class="d-flex align-center justify-space-between flex-wrap ga-2 mb-3">
+      <!-- Chips de categoría alineados a la izquierda -->
+      <div class="d-flex align-center flex-wrap ga-2">
+        <AppChipFilter
+          field="category_id"
+          :items="categoryFilterOptions"
+          all-text="Todos"
+          color="primary"
+          density="comfortable"
+          data-testid="category-chip-filter"
+          @change="handleCategoryFilterChange"
+        />
+      </div>
+
+      <!-- Botón de recarga a la derecha -->
+      <v-tooltip text="Recargar la tabla" location="top" color="#1E293B">
+        <template #activator="{ props: tooltipProps }">
+          <v-btn
+            v-bind="tooltipProps"
+            icon="mdi-refresh"
+            variant="flat"
+            color="white"
+            size="small"
+            class="border rounded-circle flex-shrink-0"
+            :loading="accountsQuery.isLoading.value"
+            data-testid="btn-refresh-accounts"
+            @click="refreshAll"
+          />
+        </template>
+      </v-tooltip>
+    </div>
 
     <!-- ═══════════════════════════════════════════════════════════ -->
     <!-- TERCERA SECCIÓN: TABLA BLANCA ESTANDARIZADA                   -->
@@ -605,7 +642,7 @@ onMounted(async () => {
         <!-- Categoría -->
         <v-select
           v-model="form.category_id"
-          :items="categories"
+          :items="categoryOptions"
           item-title="name"
           item-value="id"
           label="Categoría *"
@@ -635,127 +672,30 @@ onMounted(async () => {
           label="Nombre del Método / Cuenta *"
           variant="outlined"
           density="comfortable"
+          maxlength="80"
+          counter="80"
           class="mb-3"
           data-testid="input-account-name"
         />
 
-        <!-- CAMPOS CONDICIONALES DE METADATA -->
-        <!-- 1. Transferencia Bancaria Nacional (catId 3) -->
-        <div v-if="Number(form.category_id) === 3" class="mb-2">
-          <v-divider class="my-3" />
-          <p class="text-caption font-weight-bold text-medium-emphasis mb-2 text-uppercase">
-            Datos Bancarios
-          </p>
-
-          <v-text-field
-            v-model="form.bank_name"
-            label="Banco *"
-            variant="outlined"
-            density="comfortable"
-            class="mb-3"
-            data-testid="input-meta-bank-name"
-          />
-
-          <v-text-field
-            v-model="form.account_number"
-            label="Número de Cuenta (20 dígitos) *"
-            variant="outlined"
-            density="comfortable"
-            maxlength="20"
-            class="mb-3"
-            data-testid="input-meta-account-number"
-          />
-
-          <v-text-field
-            v-model="form.id_document"
-            label="Cédula / RIF *"
-            variant="outlined"
-            density="comfortable"
-            class="mb-3"
-            data-testid="input-meta-id-document"
-          />
-
-          <v-text-field
-            v-model="form.beneficiary_name"
-            label="Titular / Beneficiario *"
-            variant="outlined"
-            density="comfortable"
-            class="mb-3"
-            data-testid="input-meta-beneficiary"
-          />
+        <!-- Renderizado dinámico de campos de metadatos desde el esquema del sistema -->
+        <div v-if="isLoadingSchema" class="py-4 text-center">
+          <v-progress-circular indeterminate color="primary" size="24" width="2" />
+          <div class="text-caption text-medium-emphasis mt-2">Cargando campos del método...</div>
         </div>
 
-        <!-- 2. Pago Móvil (catId 2) -->
-        <div v-else-if="Number(form.category_id) === 2" class="mb-2">
+        <div v-else-if="categoryMetadataSchema && hasMetadataFields" class="mb-2">
           <v-divider class="my-3" />
           <p class="text-caption font-weight-bold text-medium-emphasis mb-2 text-uppercase">
-            Datos de Pago Móvil
+            Datos Específicos del Método
           </p>
 
-          <v-text-field
-            v-model="form.bank_code"
-            label="Banco / Código *"
-            variant="outlined"
+          <AppMetadataRenderer
+            :schema="categoryMetadataSchema"
+            v-model="metadataFormData"
             density="comfortable"
-            class="mb-3"
-            data-testid="input-meta-bank-code"
-          />
-
-          <v-text-field
-            v-model="form.phone_number"
-            label="Teléfono Registrado *"
-            variant="outlined"
-            density="comfortable"
-            class="mb-3"
-            data-testid="input-meta-phone"
-          />
-
-          <v-text-field
-            v-model="form.id_document"
-            label="Cédula / RIF *"
-            variant="outlined"
-            density="comfortable"
-            class="mb-3"
-            data-testid="input-meta-pm-doc"
-          />
-        </div>
-
-        <!-- 3. Zelle (catId 4) -->
-        <div v-else-if="Number(form.category_id) === 4" class="mb-2">
-          <v-divider class="my-3" />
-          <p class="text-caption font-weight-bold text-medium-emphasis mb-2 text-uppercase">
-            Datos de Zelle
-          </p>
-
-          <v-text-field
-            v-model="form.email"
-            label="Correo Electrónico Registrado *"
-            type="email"
-            variant="outlined"
-            density="comfortable"
-            class="mb-3"
-            data-testid="input-meta-zelle-email"
-          />
-
-          <v-text-field
-            v-model="form.account_holder"
-            label="Nombre del Titular"
-            variant="outlined"
-            density="comfortable"
-            class="mb-3"
-            data-testid="input-meta-zelle-holder"
-          />
-        </div>
-
-        <!-- 4. Efectivo (catId 1) -->
-        <div v-else-if="Number(form.category_id) === 1" class="mb-2">
-          <v-alert
-            type="info"
-            variant="tonal"
-            density="compact"
-            text="Este método registrará cobros directamente en caja física de efectivo."
-            rounded="lg"
-            class="my-3"
+            display-mode="flat"
+            :columns="12"
           />
         </div>
 
@@ -767,6 +707,7 @@ onMounted(async () => {
           hide-details
           label="Cuenta activa para registrar cobros"
           data-testid="switch-account-active"
+          class="mt-2"
         />
       </v-form>
     </AppModal>

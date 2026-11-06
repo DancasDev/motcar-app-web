@@ -31,7 +31,7 @@ export const METADATA_LABELS_ES: Record<string, string> = {
   id_document: 'Cédula / Documento de Identidad',
   account_number: 'Número de Cuenta',
   beneficiary_name: 'Nombre del Beneficiario',
-  account_holder: 'Titular de la Cuenta',
+  account_holder: 'Propietario / Titular de la Cuenta',
   email: 'Correo Electrónico',
   description: 'Descripción',
   notes: 'Notas',

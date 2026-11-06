@@ -55,6 +55,7 @@ export interface PaymentCategoryItem {
   id: number | string
   name: string
   code?: string
+  metadata_schema_id?: string | number | null
   is_disabled?: string | number | boolean
   created_at?: string
   updated_at?: string
