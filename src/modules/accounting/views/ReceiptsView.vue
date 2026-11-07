@@ -1,38 +1,71 @@
 <script setup lang="ts">
-import { ref, watch, onMounted, computed } from 'vue'
-import { useRoute } from 'vue-router'
+import { ref, watch, onMounted } from 'vue'
+import { useDisplay } from 'vuetify'
 import { useBranchesStore } from '@/modules/branches/stores/branches.store'
 import { useAccountingStore } from '../stores/accounting.store'
 import { useDataQuery } from '@/composables/useDataQuery'
-import {
-  fetchReceipts,
-  fetchAccountsReceivable
-} from '../api/accounting.api'
-import type {
-  ReceiptItem,
-  AccountReceivableItem,
-  FullReceiptEmissionPayload
-} from '../types'
+import { fetchReceipts } from '../api/accounting.api'
+import type { ReceiptItem } from '../types'
+import AppChipFilter from '@/components/common/AppChipFilter.vue'
+import type { ChipFilterOption } from '@/components/common/AppChipFilter.vue'
 import AppModal from '@/components/common/AppModal.vue'
 
-const route = useRoute()
+const { smAndDown } = useDisplay()
 const branchesStore = useBranchesStore()
 const accountingStore = useAccountingStore()
 
-// Feedback / Notificaciones
+// ---------------------------------------------------------------------
+// Notificaciones / Feedback
+// ---------------------------------------------------------------------
 const snackbar = ref({
   show: false,
-  message: '',
+  text: '',
   color: 'success'
 })
 
-function showMessage(message: string, color: 'success' | 'error' | 'info' = 'success'): void {
-  snackbar.value = { show: true, message, color }
+function showMessage(text: string, color: 'success' | 'error' | 'info' = 'success'): void {
+  if (snackbar.value.show) {
+    snackbar.value.show = false
+    setTimeout(() => {
+      snackbar.value = { show: true, text, color }
+    }, 80)
+  } else {
+    snackbar.value = { show: true, text, color }
+  }
 }
 
 // ---------------------------------------------------------------------
-// 1. Tabla de Recibos de Caja
+// Filtro de Estados (Chips)
 // ---------------------------------------------------------------------
+const statusFilterOptions: ChipFilterOption[] = [
+  { label: 'Confirmados', value: '1' },
+  { label: 'Borradores', value: '0' },
+  { label: 'Anulados', value: '2' }
+]
+
+function handleStatusFilterChange(filters: any[] | null): void {
+  if (!filters || filters.length === 0) {
+    receiptsQuery.staticFilters.value = []
+  } else {
+    receiptsQuery.staticFilters.value = filters
+  }
+  receiptsQuery.refresh()
+}
+
+// ---------------------------------------------------------------------
+// 1. Consulta Paginada de Recibos
+// ---------------------------------------------------------------------
+const rawSearch = ref('')
+
+function normalizeSearchInput(input: string): string {
+  const trimmed = (input || '').trim()
+  const docMatch = trimmed.match(/^[VEJGPvejgp]?[-\s.]?(\d[\d.-]*)$/)
+  if (docMatch && docMatch[1]) {
+    return docMatch[1].replace(/[.-]/g, '')
+  }
+  return trimmed
+}
+
 const receiptsQuery = useDataQuery<ReceiptItem>(
   async (params) => {
     if (!branchesStore.activeBranchId) {
@@ -42,24 +75,30 @@ const receiptsQuery = useDataQuery<ReceiptItem>(
   },
   {
     initialItemsPerPage: 10,
-    searchFields: ['code', 'client_first_name', 'client_last_name', 'collector_first_name'],
-    defaultOrder: { id: 'DESC' }
+    searchFields: [
+      'code',
+      'client_identification_value'
+    ],
+    defaultOrder: { date: 'DESC' }
   }
 )
 
+watch(rawSearch, (val) => {
+  receiptsQuery.search.value = normalizeSearchInput(val || '')
+})
+
 const receiptHeaders = [
-  { title: 'Código', key: 'code', align: 'start' as const, sortable: true, width: '180px' },
-  { title: 'Fecha', key: 'date', align: 'center' as const, sortable: true, width: '120px' },
+  { title: 'Código', key: 'code', align: 'start' as const, sortable: true, width: '220px' },
+  { title: 'Fecha', key: 'date', align: 'center' as const, sortable: true, width: '160px' },
   { title: 'Cliente', key: 'client', align: 'start' as const, sortable: false },
-  { title: 'Cajero', key: 'collector', align: 'start' as const, sortable: false },
   { title: 'Estado', key: 'status', align: 'center' as const, sortable: true, width: '130px' },
-  { title: 'Acciones', key: 'actions', align: 'end' as const, sortable: false, width: '150px' }
+  { title: 'Acciones', key: 'actions', align: 'end' as const, sortable: false, width: '80px' }
 ]
 
 function getReceiptStatusColor(status: string | number): string {
   switch (String(status)) {
     case '0':
-      return 'grey-darken-1'
+      return 'warning'
     case '1':
       return 'primary'
     case '2':
@@ -82,8 +121,23 @@ function getReceiptStatusLabel(status: string | number): string {
   }
 }
 
-// Detalle de Recibo
+function formatClientDoc(item: {
+  client_identification_type?: string | number | null
+  client_identification_value?: string | null
+  client_id?: string | number
+}): string {
+  if (!item.client_identification_value) return `ID: #${item.client_id}`
+  const t = String(item.client_identification_type ?? '0')
+  const map: Record<string, string> = { '0': 'V', '1': 'E', '2': 'J', '3': 'G', '4': 'P' }
+  const prefix = map[t] || 'V'
+  return `${prefix}-${item.client_identification_value}`
+}
+
+// ---------------------------------------------------------------------
+// 2. Detalle Consolidado de Recibo
+// ---------------------------------------------------------------------
 const receiptDetailDialogOpen = ref(false)
+
 async function handleViewReceiptDetail(receipt: ReceiptItem): Promise<void> {
   if (!branchesStore.activeBranchId) return
   try {
@@ -95,11 +149,14 @@ async function handleViewReceiptDetail(receipt: ReceiptItem): Promise<void> {
   }
 }
 
-// Descargar PDF
-const isDownloadingPdf = ref(false)
+// ---------------------------------------------------------------------
+// 3. Descarga de Comprobante PDF (Indicador individual por fila)
+// ---------------------------------------------------------------------
+const downloadingReceiptId = ref<string | number | null>(null)
+
 async function handleDownloadPdf(receipt: ReceiptItem): Promise<void> {
   if (!branchesStore.activeBranchId) return
-  isDownloadingPdf.value = true
+  downloadingReceiptId.value = receipt.id
   try {
     await accountingStore.downloadPdf(branchesStore.activeBranchId, receipt.id, receipt.code)
     showMessage(`Comprobante ${receipt.code} descargado exitosamente.`)
@@ -107,11 +164,13 @@ async function handleDownloadPdf(receipt: ReceiptItem): Promise<void> {
     const msg = err instanceof Error ? err.message : 'Error al descargar el PDF del recibo.'
     showMessage(msg, 'error')
   } finally {
-    isDownloadingPdf.value = false
+    downloadingReceiptId.value = null
   }
 }
 
-// Anular Recibo
+// ---------------------------------------------------------------------
+// 4. Anulación de Recibo
+// ---------------------------------------------------------------------
 const voidDialogOpen = ref(false)
 const voidReceiptTarget = ref<ReceiptItem | null>(null)
 const voidReason = ref('')
@@ -149,223 +208,12 @@ async function handleConfirmVoid(): Promise<void> {
 }
 
 // ---------------------------------------------------------------------
-// 2. Diálogo de Emisión de Recibo de Cobro
+// Ciclo de Vida
 // ---------------------------------------------------------------------
-const receiptDialogOpen = ref(false)
-const isSubmittingReceipt = ref(false)
-
-interface PaymentFormItem {
-  origin_type: '0' | '1'
-  origin_id: number | null
-  amount: number
-  reference: string
-  notes: string
-}
-
-const receiptForm = ref<{
-  client_id: number | null
-  client_name: string
-  date: string
-  notes: string
-  selectedReceivableIds: number[]
-  payments: PaymentFormItem[]
-  confirmImmediately: boolean
-}>({
-  client_id: 1,
-  client_name: '',
-  date: new Date().toISOString().substring(0, 10),
-  notes: '',
-  selectedReceivableIds: [],
-  payments: [],
-  confirmImmediately: true
-})
-
-// Cuentas por cobrar para el cliente actual
-const availableReceivables = ref<AccountReceivableItem[]>([])
-const isLoadingClientReceivables = ref(false)
-
-async function loadClientReceivables(clientId: number | null): Promise<void> {
-  if (!clientId || !branchesStore.activeBranchId) {
-    availableReceivables.value = []
-    return
-  }
-  isLoadingClientReceivables.value = true
-  try {
-    const res = await fetchAccountsReceivable(branchesStore.activeBranchId, {
-      itemsPerPage: 50,
-      filters: [['client_id', String(clientId), '=', 'AND']]
-    })
-    availableReceivables.value = (res.data || []).filter(
-      (r) => String(r.status) === '0' || String(r.status) === '1'
-    )
-  } catch (err) {
-    console.error('Error fetching client receivables:', err)
-  } finally {
-    isLoadingClientReceivables.value = false
-  }
-}
-
-watch(
-  () => receiptForm.value.client_id,
-  (newId) => {
-    if (newId) {
-      loadClientReceivables(newId)
-    } else {
-      availableReceivables.value = []
-    }
-  }
-)
-
-const totalSelectedDebt = computed(() => {
-  return availableReceivables.value
-    .filter((r) => receiptForm.value.selectedReceivableIds.includes(Number(r.id)))
-    .reduce((sum, r) => {
-      const balance = Number(r.total_amount) - Number(r.paid_amount)
-      return sum + (balance > 0 ? balance : 0)
-    }, 0)
-})
-
-const totalPaymentsAmount = computed(() => {
-  return receiptForm.value.payments.reduce((sum, p) => sum + (Number(p.amount) || 0), 0)
-})
-
-const paymentDifference = computed(() => {
-  return totalPaymentsAmount.value - totalSelectedDebt.value
-})
-
-function openCreateReceiptDialog(): void {
-  const defaultBank = accountingStore.bankAccounts[0]?.id
-    ? Number(accountingStore.bankAccounts[0].id)
-    : 1
-
-  receiptForm.value = {
-    client_id: 1,
-    client_name: '',
-    date: new Date().toISOString().substring(0, 10),
-    notes: 'Recaudación de cuotas periódicas',
-    selectedReceivableIds: [],
-    payments: [
-      {
-        origin_type: '0',
-        origin_id: defaultBank,
-        amount: 50,
-        reference: '',
-        notes: ''
-      }
-    ],
-    confirmImmediately: true
-  }
-
-  loadClientReceivables(1)
-  receiptDialogOpen.value = true
-}
-
-function addPaymentRow(): void {
-  const defaultBank = accountingStore.bankAccounts[0]?.id
-    ? Number(accountingStore.bankAccounts[0].id)
-    : 1
-  receiptForm.value.payments.push({
-    origin_type: '0',
-    origin_id: defaultBank,
-    amount: 0,
-    reference: '',
-    notes: ''
-  })
-}
-
-function removePaymentRow(index: number): void {
-  receiptForm.value.payments.splice(index, 1)
-}
-
-async function handleEmitReceipt(): Promise<void> {
-  if (!branchesStore.activeBranchId) {
-    showMessage('Debes seleccionar una sucursal activa.', 'error')
-    return
-  }
-  if (!receiptForm.value.client_id) {
-    showMessage('Debes ingresar el ID del cliente.', 'error')
-    return
-  }
-  if (receiptForm.value.selectedReceivableIds.length === 0) {
-    showMessage('Debes seleccionar al menos una cuenta por cobrar a imputar.', 'error')
-    return
-  }
-  if (receiptForm.value.payments.length === 0 || totalPaymentsAmount.value <= 0) {
-    showMessage('Debes ingresar al menos una forma de pago válida con importe mayor a 0.', 'error')
-    return
-  }
-
-  isSubmittingReceipt.value = true
-  try {
-    const payload: FullReceiptEmissionPayload = {
-      client_id: receiptForm.value.client_id,
-      date: receiptForm.value.date,
-      notes: receiptForm.value.notes.trim() || undefined,
-      items: receiptForm.value.selectedReceivableIds,
-      payments: receiptForm.value.payments.map((p) => ({
-        origin_type: p.origin_type,
-        origin_id: Number(p.origin_id),
-        amount: Number(p.amount),
-        reference: p.reference.trim() || undefined,
-        notes: p.notes.trim() || undefined
-      })),
-      confirmImmediately: receiptForm.value.confirmImmediately
-    }
-
-    const receiptId = await accountingStore.createFullReceipt(branchesStore.activeBranchId, payload)
-    showMessage(`Recibo #${receiptId} emitido exitosamente.`)
-    receiptDialogOpen.value = false
-    receiptsQuery.refresh()
-  } catch (err: unknown) {
-    const msg = err instanceof Error ? err.message : 'Error al emitir el recibo de caja.'
-    showMessage(msg, 'error')
-  } finally {
-    isSubmittingReceipt.value = false
-  }
-}
-
-// Comprobación de query params (p. ej. redirigido desde Cuentas por Cobrar)
-function checkQueryParamsForNewReceipt(): void {
-  if (route.query.action === 'new') {
-    const defaultBank = accountingStore.bankAccounts[0]?.id
-      ? Number(accountingStore.bankAccounts[0].id)
-      : 1
-    const clientId = route.query.client_id ? Number(route.query.client_id) : 1
-    const recId = route.query.receivable_id ? Number(route.query.receivable_id) : null
-    const amount = route.query.amount ? Number(route.query.amount) : 50
-
-    receiptForm.value = {
-      client_id: clientId,
-      client_name: (route.query.client_name as string) || '',
-      date: new Date().toISOString().substring(0, 10),
-      notes: recId ? `Recaudo cuota #${recId}` : 'Cobranza de cuota',
-      selectedReceivableIds: recId ? [recId] : [],
-      payments: [
-        {
-          origin_type: '0',
-          origin_id: defaultBank,
-          amount: amount,
-          reference: '',
-          notes: ''
-        }
-      ],
-      confirmImmediately: true
-    }
-
-    loadClientReceivables(clientId)
-    receiptDialogOpen.value = true
-  }
-}
-
-onMounted(async () => {
-  await Promise.all([
-    accountingStore.loadCurrencies(),
-    accountingStore.loadBankAccounts()
-  ])
+onMounted(() => {
   if (branchesStore.activeBranchId) {
     receiptsQuery.refresh()
   }
-  checkQueryParamsForNewReceipt()
 })
 
 watch(
@@ -392,137 +240,120 @@ watch(
       data-testid="no-branch-alert-receipts"
     />
 
-    <!-- Encabezado de la Vista (Estilo Estándar sin card y sin icono) -->
-    <div class="d-flex align-center justify-space-between flex-wrap ga-3 mb-6">
-      <div>
-        <h1 class="text-h5 font-weight-bold text-high-emphasis mb-0 leading-tight">
-          Recibos de Pago y Caja
-        </h1>
-        <p class="text-body-2 text-medium-emphasis mb-0 mt-0">
-          Emisión de comprobantes de recaudación, historial de recibos emitidos y descargas en PDF
-        </p>
-      </div>
-
-      <!-- Acciones Desktop -->
-      <div class="d-none d-sm-flex align-center ga-2">
-        <v-btn
-          variant="outlined"
-          color="primary"
-          prepend-icon="mdi-plus"
-          class="text-none font-weight-medium"
-          data-testid="btn-create-receipt-manual"
-          @click="openCreateReceiptDialog()"
-        >
-          Emisión Manual
-        </v-btn>
-        <v-btn
-          color="primary"
-          prepend-icon="mdi-point-of-sale"
-          class="text-none font-weight-bold px-4"
-          data-testid="btn-go-to-pos"
-          to="/accounting/pos"
-        >
-          Punto de Cobro
-        </v-btn>
-      </div>
-
-      <!-- Menú Mobile -->
-      <div class="d-flex d-sm-none">
-        <v-menu location="bottom end">
-          <template #activator="{ props }">
-            <v-btn
-              v-bind="props"
-              icon="mdi-dots-vertical"
-              variant="text"
-              size="small"
-              data-testid="btn-mobile-receipts-menu"
-            />
-          </template>
-          <v-list density="compact" rounded="lg" elevation="3">
-            <v-list-item
-              prepend-icon="mdi-point-of-sale"
-              title="Punto de Cobro"
-              to="/accounting/pos"
-            />
-            <v-list-item
-              prepend-icon="mdi-plus"
-              title="Emisión Manual"
-              @click="openCreateReceiptDialog()"
-            />
-          </v-list>
-        </v-menu>
-      </div>
+    <!-- ═══════════════════════════════════════════════════════════ -->
+    <!-- PRIMERA SECCIÓN: ENCABEZADO Y TÍTULO LIMPIO (SIN BOTONES)     -->
+    <!-- ═══════════════════════════════════════════════════════════ -->
+    <div class="mb-9">
+      <h1 class="text-h5 font-weight-bold text-high-emphasis mb-0 leading-tight">
+        Recibos de Pago y Caja
+      </h1>
+      <p class="text-body-2 text-medium-emphasis mb-0 mt-0">
+        Historial de comprobantes de recaudación emitidos, auditoría de pagos y descargas en PDF
+      </p>
     </div>
 
-    <!-- Tabla de Recibos -->
-    <v-card elevation="0" rounded="lg" class="border bg-white">
-      <v-card-text class="pb-2">
-        <v-row density="compact" align="center">
-          <v-col cols="12" sm="6" md="5">
-            <v-text-field
-              v-model="receiptsQuery.search.value"
-              placeholder="Buscar por código de recibo, cliente o cajero..."
-              prepend-inner-icon="mdi-magnify"
-              variant="outlined"
-              density="compact"
-              hide-details
-              clearable
-              data-testid="receipt-search-input"
-            />
-          </v-col>
-          <v-col cols="12" sm="6" md="7" class="text-right">
-            <v-btn
-              variant="text"
-              color="primary"
-              prepend-icon="mdi-refresh"
-              size="small"
-              class="text-none"
-              @click="receiptsQuery.refresh()"
-            >
-              Recargar Recibos
-            </v-btn>
-          </v-col>
-        </v-row>
-      </v-card-text>
+    <!-- ═══════════════════════════════════════════════════════════ -->
+    <!-- SEGUNDA SECCIÓN: BARRA DE BÚSQUEDA (SECCIÓN SOLA, 7 COLS)   -->
+    <!-- ═══════════════════════════════════════════════════════════ -->
+    <v-row density="compact" class="mb-3">
+      <v-col cols="12" md="7">
+        <v-text-field
+          v-model="rawSearch"
+          prepend-inner-icon="mdi-magnify"
+          placeholder="Buscar por código de recibo o cédula del cliente..."
+          variant="solo"
+          flat
+          bg-color="white"
+          density="comfortable"
+          rounded="lg"
+          hide-details
+          clearable
+          class="border search-field elevation-0"
+          data-testid="receipt-search-input"
+        />
+      </v-col>
+    </v-row>
 
-      <v-divider />
+    <!-- ═══════════════════════════════════════════════════════════ -->
+    <!-- TERCERA SECCIÓN: FILTROS RÁPIDOS Y BOTÓN DE RECARGA          -->
+    <!-- ═══════════════════════════════════════════════════════════ -->
+    <div class="d-flex align-center justify-space-between flex-wrap ga-2 mb-3">
+      <!-- Chips alineados a la izquierda -->
+      <div class="d-flex align-center flex-wrap ga-2">
+        <AppChipFilter
+          field="status"
+          :items="statusFilterOptions"
+          all-text="Todos"
+          color="primary"
+          density="comfortable"
+          data-testid="receipt-chip-filter"
+          @change="handleStatusFilterChange"
+        />
+      </div>
 
+      <!-- Botón de recarga a la derecha con tooltip -->
+      <v-tooltip text="Recargar la tabla" location="top" color="#1E293B">
+        <template #activator="{ props: tooltipProps }">
+          <v-btn
+            v-bind="tooltipProps"
+            icon="mdi-refresh"
+            variant="flat"
+            color="white"
+            size="small"
+            class="border rounded-circle flex-shrink-0"
+            :loading="receiptsQuery.isLoading.value"
+            data-testid="btn-refresh-receipts"
+            @click="receiptsQuery.refresh()"
+          />
+        </template>
+      </v-tooltip>
+    </div>
+
+    <!-- ═══════════════════════════════════════════════════════════ -->
+    <!-- CUARTA SECCIÓN: TABLA BLANCA ESTANDARIZADA                   -->
+    <!-- ═══════════════════════════════════════════════════════════ -->
+    <v-card elevation="0" rounded="lg" class="border bg-white overflow-hidden">
       <v-data-table-server
-        v-model:page="receiptsQuery.page.value"
         v-model:items-per-page="receiptsQuery.itemsPerPage.value"
+        v-model:page="receiptsQuery.page.value"
+        v-model:sort-by="receiptsQuery.sortBy.value"
         :headers="receiptHeaders"
         :items="receiptsQuery.items.value"
         :items-length="receiptsQuery.totalItems.value"
         :loading="receiptsQuery.isLoading.value"
-        hover
+        :mobile="smAndDown"
+        no-data-text="No hay comprobantes de pago registrados"
+        loading-text="Cargando comprobantes de caja..."
         density="comfortable"
+        hover
+        class="bg-white"
         data-testid="receipts-table"
         @update:options="receiptsQuery.onUpdateOptions"
       >
-        <!-- Slot Código -->
+        <!-- Slot Código (en una sola línea) -->
         <template #[`item.code`]="{ item }">
-          <span class="font-weight-bold text-body-2 font-monospace text-high-emphasis">
+          <span class="font-weight-bold text-body-2 font-mono text-high-emphasis text-no-wrap">
             {{ item.code }}
           </span>
         </template>
 
         <!-- Slot Fecha -->
         <template #[`item.date`]="{ item }">
-          <span class="text-caption text-medium-emphasis">{{ item.date }}</span>
+          <span class="text-caption text-medium-emphasis font-mono">
+            {{ item.date }}
+          </span>
         </template>
 
-        <!-- Slot Cliente -->
+        <!-- Slot Cliente con Cédula / Documento -->
         <template #[`item.client`]="{ item }">
-          <span class="font-weight-medium text-body-2 text-high-emphasis">
-            {{ item.client_first_name || 'Cliente' }} {{ item.client_last_name || `#${item.client_id}` }}
-          </span>
-        </template>
-
-        <!-- Slot Cajero -->
-        <template #[`item.collector`]="{ item }">
-          <span class="text-body-2 text-medium-emphasis">
-            {{ item.collector_first_name || 'Cajero' }} {{ item.collector_last_name || '' }}
-          </span>
+          <div class="py-1">
+            <div class="font-weight-medium text-body-2 text-high-emphasis">
+              {{ item.client_first_name || 'Cliente' }} {{ item.client_last_name || `#${item.client_id}` }}
+            </div>
+            <div class="text-caption text-medium-emphasis font-mono">
+              {{ formatClientDoc(item) }}
+            </div>
+          </div>
         </template>
 
         <!-- Slot Estado -->
@@ -531,385 +362,275 @@ watch(
             :color="getReceiptStatusColor(item.status)"
             size="small"
             variant="tonal"
+            label
             class="font-weight-medium"
           >
             {{ getReceiptStatusLabel(item.status) }}
           </v-chip>
         </template>
 
-        <!-- Slot Acciones -->
+        <!-- Slot Acciones (Kebab Menu) -->
         <template #[`item.actions`]="{ item }">
-          <div class="d-flex justify-end ga-1">
-            <v-btn
-              icon="mdi-eye-outline"
-              size="small"
-              variant="text"
-              color="primary"
-              title="Ver Detalle"
-              data-testid="btn-view-receipt-detail"
-              @click="handleViewReceiptDetail(item)"
-            />
-            <v-btn
-              icon="mdi-file-pdf-box"
-              size="small"
-              variant="text"
-              color="primary"
-              title="Descargar PDF"
-              data-testid="btn-download-receipt-pdf"
-              :loading="isDownloadingPdf"
-              @click="handleDownloadPdf(item)"
-            />
-            <v-btn
-              v-if="String(item.status) === '1'"
-              icon="mdi-cancel"
-              size="small"
-              variant="text"
-              color="grey"
-              title="Anular Recibo"
-              data-testid="btn-void-receipt"
-              @click="openVoidDialog(item)"
-            />
+          <div class="d-flex align-center justify-end">
+            <v-menu location="bottom end">
+              <template #activator="{ props: menuProps }">
+                <v-btn
+                  v-bind="menuProps"
+                  icon="mdi-dots-vertical"
+                  variant="text"
+                  size="small"
+                  color="medium-emphasis"
+                  :data-testid="`btn-receipt-actions-${item.id}`"
+                />
+              </template>
+              <v-list density="compact" rounded="md" elevation="4" class="py-1 min-w-160">
+                <v-list-item
+                  prepend-icon="mdi-eye-outline"
+                  title="Ver Detalle"
+                  data-testid="menu-item-view-receipt-detail"
+                  @click="handleViewReceiptDetail(item)"
+                />
+                <v-list-item
+                  prepend-icon="mdi-file-pdf-box"
+                  title="Descargar PDF"
+                  data-testid="menu-item-download-receipt-pdf"
+                  :disabled="downloadingReceiptId === item.id"
+                  @click="handleDownloadPdf(item)"
+                />
+                <template v-if="String(item.status) === '1'">
+                  <v-divider class="my-1" />
+                  <v-list-item
+                    prepend-icon="mdi-cancel"
+                    title="Anular Recibo"
+                    base-color="error"
+                    data-testid="menu-item-void-receipt"
+                    @click="openVoidDialog(item)"
+                  />
+                </template>
+              </v-list>
+            </v-menu>
           </div>
         </template>
 
         <!-- Estado Vacío -->
         <template #no-data>
-          <div class="text-center py-8">
-            <v-icon icon="mdi-receipt-text-remove" size="48" color="grey" class="mb-2" />
-            <div class="text-subtitle-1 text-grey font-weight-medium">
-              No hay recibos emitidos en esta sucursal
+          <div class="py-12 text-center text-medium-emphasis">
+            <v-icon icon="mdi-receipt-text-remove" size="48" class="mb-3 text-disabled" />
+            <div class="text-subtitle-1 font-weight-medium">No se encontraron comprobantes de pago</div>
+            <div class="text-caption text-disabled">
+              No hay recibos registrados o no coinciden con los criterios de búsqueda.
             </div>
           </div>
         </template>
       </v-data-table-server>
     </v-card>
 
-    <!-- Modal Estándar: Emitir Recibo de Cobro -->
-    <AppModal
-      v-model="receiptDialogOpen"
-      title="Emitir Recibo de Cobro"
-      subtitle="Registra la recaudación e imputación sobre las cuotas del cliente"
-      :max-width="840"
-      :persistent="true"
-      submit-text="Registrar"
-      :loading="isSubmittingReceipt"
-      data-testid="receipt-form-dialog"
-      @submit="handleEmitReceipt"
-      @cancel="receiptDialogOpen = false"
-    >
-      <v-form @submit.prevent="handleEmitReceipt">
-        <!-- Sección 1: Datos de Cabecera -->
-        <div class="text-subtitle-2 font-weight-bold text-high-emphasis mb-2">
-          1. Cabecera del Comprobante
-        </div>
-        <v-row density="compact">
-          <v-col cols="12" sm="4">
-            <v-text-field
-              v-model.number="receiptForm.client_id"
-              label="ID de Cliente Titular *"
-              type="number"
-              variant="outlined"
-              density="compact"
-              data-testid="input-receipt-client-id"
-              required
-            />
-          </v-col>
-          <v-col cols="12" sm="4">
-            <v-text-field
-              v-model="receiptForm.date"
-              label="Fecha del Recibo *"
-              type="date"
-              variant="outlined"
-              density="compact"
-              data-testid="input-receipt-date"
-              required
-            />
-          </v-col>
-          <v-col cols="12" sm="4">
-            <v-text-field
-              v-model="receiptForm.notes"
-              label="Notas / Observaciones"
-              variant="outlined"
-              density="compact"
-              data-testid="input-receipt-notes"
-            />
-          </v-col>
-        </v-row>
-
-        <v-divider class="my-4" />
-
-        <!-- Sección 2: Selección de Obligaciones a Imputar -->
-        <div class="d-flex justify-space-between align-center mb-2">
-          <div class="text-subtitle-2 font-weight-bold text-high-emphasis">
-            2. Obligaciones / Cuotas Pendientes del Cliente
-          </div>
-          <span class="text-caption text-medium-emphasis">
-            {{ availableReceivables.length }} cuota(s) encontrada(s)
-          </span>
-        </div>
-
-        <div v-if="availableReceivables.length > 0" class="border rounded pa-2 mb-4 bg-grey-lighten-5">
-          <v-table density="compact">
-            <thead>
-              <tr>
-                <th style="width: 50px"></th>
-                <th>Cuota / Concepto</th>
-                <th>Vencimiento</th>
-                <th class="text-end">Monto Total</th>
-                <th class="text-end">Saldo Pendiente</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr v-for="rec in availableReceivables" :key="rec.id">
-                <td>
-                  <v-checkbox
-                    v-model="receiptForm.selectedReceivableIds"
-                    :value="Number(rec.id)"
-                    density="compact"
-                    hide-details
-                  />
-                </td>
-                <td class="font-weight-medium">
-                  {{ rec.concept_name || 'Cuota' }} - {{ rec.description }}
-                </td>
-                <td class="text-caption">{{ rec.due_date }}</td>
-                <td class="text-end">${{ Number(rec.total_amount).toFixed(2) }}</td>
-                <td class="text-end font-weight-bold">
-                  ${{ (Number(rec.total_amount) - Number(rec.paid_amount)).toFixed(2) }}
-                </td>
-              </tr>
-            </tbody>
-          </v-table>
-        </div>
-        <v-alert
-          v-else
-          type="info"
-          variant="tonal"
-          density="compact"
-          class="mb-4 text-caption"
-        >
-          No se han encontrado cuotas pendientes automáticas para el cliente {{ receiptForm.client_id }}.
-        </v-alert>
-
-        <v-divider class="my-4" />
-
-        <!-- Sección 3: Formas de Pago -->
-        <div class="d-flex justify-space-between align-center mb-2">
-          <div class="text-subtitle-2 font-weight-bold text-high-emphasis">
-            3. Medios de Pago Recibidos
-          </div>
-          <v-btn
-            size="small"
-            variant="outlined"
-            color="primary"
-            prepend-icon="mdi-plus"
-            class="text-none font-weight-medium"
-            data-testid="btn-add-payment-method"
-            @click="addPaymentRow"
-          >
-            Agregar Pago
-          </v-btn>
-        </div>
-
-        <div
-          v-for="(payment, index) in receiptForm.payments"
-          :key="index"
-          class="border rounded pa-3 mb-2 bg-grey-lighten-5"
-        >
-          <v-row density="compact" align="center">
-            <v-col cols="12" sm="4">
-              <v-select
-                v-model="payment.origin_id"
-                :items="accountingStore.bankAccounts"
-                item-title="name"
-                item-value="id"
-                label="Cuenta Receptora / Caja *"
-                variant="outlined"
-                density="compact"
-                hide-details
-                required
-              />
-            </v-col>
-            <v-col cols="12" sm="3">
-              <v-text-field
-                v-model.number="payment.amount"
-                label="Monto Recibido ($) *"
-                type="number"
-                step="0.01"
-                variant="outlined"
-                density="compact"
-                hide-details
-                required
-              />
-            </v-col>
-            <v-col cols="12" sm="4">
-              <v-text-field
-                v-model="payment.reference"
-                label="Referencia / Nro Transacción"
-                variant="outlined"
-                density="compact"
-                hide-details
-              />
-            </v-col>
-            <v-col cols="12" sm="1" class="text-right">
-              <v-btn
-                icon="mdi-delete-outline"
-                variant="text"
-                color="error"
-                size="small"
-                :disabled="receiptForm.payments.length === 1"
-                @click="removePaymentRow(index)"
-              />
-            </v-col>
-          </v-row>
-        </div>
-
-        <!-- Resumen Sobrio y Elegante (Sin fondos chillones) -->
-        <div class="border rounded pa-3 mt-4 bg-grey-lighten-5">
-          <div class="d-flex justify-space-between text-body-2 mb-1">
-            <span class="text-medium-emphasis">Deuda Total Imputada:</span>
-            <span class="font-weight-bold">${{ totalSelectedDebt.toFixed(2) }}</span>
-          </div>
-          <div class="d-flex justify-space-between text-body-2 mb-1">
-            <span class="text-medium-emphasis">Total Medios de Pago:</span>
-            <span class="font-weight-bold text-high-emphasis">${{ totalPaymentsAmount.toFixed(2) }}</span>
-          </div>
-          <v-divider class="my-2" />
-          <div class="d-flex justify-space-between text-body-2 font-weight-bold">
-            <span>Diferencia / Excedente:</span>
-            <span :class="paymentDifference >= 0 ? 'text-high-emphasis' : 'text-error'">
-              ${{ paymentDifference.toFixed(2) }}
-              <span v-if="paymentDifference > 0" class="text-caption font-weight-regular text-medium-emphasis">
-                (Genera Saldo a Favor)
-              </span>
-            </span>
-          </div>
-        </div>
-
-        <v-switch
-          v-model="receiptForm.confirmImmediately"
-          label="Confirmar inmediatamente y amortizar cuotas"
-          color="primary"
-          density="compact"
-          class="mt-3"
-          hide-details
-        />
-      </v-form>
-    </AppModal>
-
-    <!-- Modal Estándar: Detalle Consolidado del Recibo -->
+    <!-- ═══════════════════════════════════════════════════════════ -->
+    <!-- MODAL: DETALLE CONSOLIDADO DEL RECIBO (CON CAJERO)           -->
+    <!-- ═══════════════════════════════════════════════════════════ -->
     <AppModal
       v-model="receiptDetailDialogOpen"
       :title="`Comprobante de Caja: ${accountingStore.selectedReceiptDetail?.code || ''}`"
-      subtitle="Desglose de obligaciones imputadas y recaudación registrada"
-      :max-width="760"
+      subtitle="Desglose de obligaciones imputadas, recaudación y cajero responsable"
+      :max-width="780"
       hide-submit
       cancel-text="Cerrar"
+      data-testid="receipt-detail-modal"
       @cancel="receiptDetailDialogOpen = false"
     >
       <template v-if="accountingStore.selectedReceiptDetail">
-        <v-row density="compact" class="mb-3 text-body-2">
-          <v-col cols="6" sm="3">
-            <span class="text-caption text-medium-emphasis">Fecha:</span>
-            <div class="font-weight-medium">{{ accountingStore.selectedReceiptDetail.date }}</div>
-          </v-col>
-          <v-col cols="6" sm="3">
-            <span class="text-caption text-medium-emphasis">Sucursal:</span>
-            <div class="font-weight-medium">{{ accountingStore.selectedReceiptDetail.branch_name || '—' }}</div>
-          </v-col>
-          <v-col cols="6" sm="3">
-            <span class="text-caption text-medium-emphasis">Cliente:</span>
-            <div class="font-weight-medium">
-              {{ accountingStore.selectedReceiptDetail.client_first_name }} {{ accountingStore.selectedReceiptDetail.client_last_name }}
-            </div>
-          </v-col>
-          <v-col cols="6" sm="3">
-            <span class="text-caption text-medium-emphasis">Cajero:</span>
-            <div class="font-weight-medium">
-              {{ accountingStore.selectedReceiptDetail.collector_first_name || 'Admin' }}
-            </div>
-          </v-col>
-        </v-row>
+        <!-- Tarjeta de Metadatos del Comprobante -->
+        <div class="mb-4 pa-4 bg-grey-lighten-4 rounded-lg border">
+          <v-row density="compact">
+            <v-col cols="12" sm="3">
+              <span class="text-caption text-medium-emphasis">Fecha:</span>
+              <div class="font-weight-medium font-mono text-body-2">
+                {{ accountingStore.selectedReceiptDetail.date }}
+              </div>
+            </v-col>
+            <v-col cols="12" sm="3">
+              <span class="text-caption text-medium-emphasis">Sucursal:</span>
+              <div class="font-weight-medium text-body-2">
+                {{ accountingStore.selectedReceiptDetail.branch_name || '—' }}
+              </div>
+            </v-col>
+            <v-col cols="12" sm="3">
+              <span class="text-caption text-medium-emphasis">Cliente:</span>
+              <div class="font-weight-medium text-body-2">
+                {{ accountingStore.selectedReceiptDetail.client_first_name }} {{ accountingStore.selectedReceiptDetail.client_last_name }}
+              </div>
+              <div class="text-caption text-medium-emphasis font-mono">
+                {{ formatClientDoc(accountingStore.selectedReceiptDetail) }}
+              </div>
+            </v-col>
+            <v-col cols="12" sm="3">
+              <span class="text-caption text-medium-emphasis">Cajero responsable:</span>
+              <div
+                class="font-weight-medium text-body-2 d-flex align-center ga-1"
+                data-testid="receipt-detail-collector"
+              >
+                <v-icon icon="mdi-account-cash-outline" size="16" color="primary" />
+                <span>
+                  {{ accountingStore.selectedReceiptDetail.collector_first_name || 'Cajero' }} {{ accountingStore.selectedReceiptDetail.collector_last_name || '' }}
+                </span>
+              </div>
+            </v-col>
+          </v-row>
 
-        <v-divider class="my-3" />
+          <v-divider
+            v-if="accountingStore.selectedReceiptDetail.notes || String(accountingStore.selectedReceiptDetail.status) === '2'"
+            class="my-2"
+          />
 
-        <div class="text-subtitle-2 font-weight-bold mb-2">Cuotas Imputadas</div>
-        <v-table density="compact" class="border rounded mb-3">
+          <div v-if="accountingStore.selectedReceiptDetail.notes" class="text-caption text-medium-emphasis mt-1">
+            <strong>Notas:</strong> {{ accountingStore.selectedReceiptDetail.notes }}
+          </div>
+          <div
+            v-if="String(accountingStore.selectedReceiptDetail.status) === '2'"
+            class="text-caption text-error font-weight-medium mt-1"
+          >
+            <strong>Motivo de anulación:</strong> {{ accountingStore.selectedReceiptDetail.cancellation_reason || 'Sin motivo registrado' }}
+          </div>
+        </div>
+
+        <!-- Cargos Imputados -->
+        <div class="text-subtitle-2 font-weight-bold mb-2 text-high-emphasis">
+          Cargos Imputados
+        </div>
+        <v-table density="compact" class="border rounded-lg mb-4">
           <thead>
             <tr>
               <th>Descripción</th>
-              <th class="text-end">Monto Cobrado</th>
+              <th class="text-end" style="width: 140px">Monto Imputado</th>
             </tr>
           </thead>
           <tbody>
             <tr v-for="item in accountingStore.selectedReceiptDetail.items" :key="item.id">
-              <td>{{ item.display_description || item.receivable_description || 'Cuota' }}</td>
-              <td class="text-end font-weight-bold">${{ Number(item.amount).toFixed(2) }}</td>
+              <td class="font-weight-medium">
+                {{ item.display_description || item.receivable_description || 'Cargo' }}
+              </td>
+              <td class="text-end font-weight-bold tabular-nums">
+                ${{ Number(item.amount).toFixed(2) }}
+              </td>
             </tr>
             <tr v-if="accountingStore.selectedReceiptDetail.items.length === 0">
-              <td colspan="2" class="text-center py-2 text-medium-emphasis">Sin renglones imputados</td>
+              <td colspan="2" class="text-center py-3 text-medium-emphasis">
+                Sin cargos imputados en este recibo
+              </td>
             </tr>
           </tbody>
         </v-table>
 
-        <div class="text-subtitle-2 font-weight-bold mb-2">Medios de Pago Registrados</div>
-        <v-table density="compact" class="border rounded mb-3">
+        <!-- Medios de Pago Registrados -->
+        <div class="text-subtitle-2 font-weight-bold mb-2 text-high-emphasis">
+          Medios de Pago Registrados
+        </div>
+        <v-table density="compact" class="border rounded-lg mb-4">
           <thead>
             <tr>
               <th>Cuenta / Medio</th>
               <th>Referencia</th>
-              <th class="text-end">Monto</th>
+              <th class="text-end" style="width: 160px">Monto</th>
             </tr>
           </thead>
           <tbody>
             <tr v-for="pay in accountingStore.selectedReceiptDetail.payments" :key="pay.id">
-              <td>{{ pay.payment_account_name || 'Cuenta Bancaria' }}</td>
-              <td class="text-caption">{{ pay.reference || '—' }}</td>
-              <td class="text-end font-weight-bold">${{ Number(pay.amount).toFixed(2) }}</td>
+              <td>
+                <div class="font-weight-medium">
+                  {{ pay.payment_account_name || 'Cuenta de Pago' }}
+                </div>
+                <div class="text-caption text-medium-emphasis">
+                  {{ pay.payment_category_name || (pay.origin_type === '1' ? 'Crédito Interno' : 'Caja') }}
+                </div>
+              </td>
+              <td class="text-caption font-mono">
+                {{ pay.reference || '—' }}
+              </td>
+              <td class="text-end font-weight-bold tabular-nums">
+                {{ pay.currency_symbol || '$' }} {{ Number(pay.amount).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) }}
+              </td>
             </tr>
             <tr v-if="accountingStore.selectedReceiptDetail.payments.length === 0">
-              <td colspan="3" class="text-center py-2 text-medium-emphasis">Sin pagos registrados</td>
+              <td colspan="3" class="text-center py-3 text-medium-emphasis">
+                Sin pagos registrados
+              </td>
             </tr>
           </tbody>
         </v-table>
-      </template>
 
-      <template #prepend-actions>
-        <v-btn
-          v-if="accountingStore.selectedReceiptDetail"
-          variant="outlined"
-          color="primary"
-          prepend-icon="mdi-file-pdf-box"
-          size="small"
-          class="text-none ml-2"
-          @click="handleDownloadPdf(accountingStore.selectedReceiptDetail as unknown as ReceiptItem)"
+        <!-- Totales / Resumen -->
+        <div
+          v-if="accountingStore.selectedReceiptDetail.totals"
+          class="border rounded-lg pa-3 bg-surface-light text-body-2 tabular-nums"
         >
-          Descargar PDF
-        </v-btn>
+          <div class="d-flex justify-space-between mb-1">
+            <span class="text-medium-emphasis">Total imputado:</span>
+            <span class="font-weight-bold text-high-emphasis">
+              ${{ Number(accountingStore.selectedReceiptDetail.totals.items_usd).toFixed(2) }}
+            </span>
+          </div>
+          <div class="d-flex justify-space-between mb-1">
+            <span class="text-medium-emphasis">Total recibido:</span>
+            <span class="font-weight-bold text-primary">
+              ${{ Number(accountingStore.selectedReceiptDetail.totals.payments_usd).toFixed(2) }}
+            </span>
+          </div>
+          <div
+            v-if="Number(accountingStore.selectedReceiptDetail.totals.credit_usd) > 0"
+            class="d-flex justify-space-between text-success font-weight-bold mt-1 pt-1 border-t"
+          >
+            <span>Saldo a favor generado:</span>
+            <span>+${{ Number(accountingStore.selectedReceiptDetail.totals.credit_usd).toFixed(2) }}</span>
+          </div>
+        </div>
       </template>
     </AppModal>
 
-    <!-- Modal Estándar: Anulación de Recibo -->
+    <!-- ═══════════════════════════════════════════════════════════ -->
+    <!-- MODAL: ANULACIÓN DE COMPROBANTE DE CAJA                      -->
+    <!-- ═══════════════════════════════════════════════════════════ -->
     <AppModal
       v-model="voidDialogOpen"
       title="Anular Comprobante de Caja"
       subtitle="Reversión atómica de amortizaciones sobre cuentas por cobrar vinculadas"
-      :max-width="480"
-      submit-text="Anular"
+      :max-width="500"
+      submit-text="Anular Comprobante"
       submit-color="error"
       submit-test-id="btn-confirm-void"
       :loading="isVoidingReceipt"
       @submit="handleConfirmVoid"
       @cancel="voidDialogOpen = false"
     >
+      <div v-if="voidReceiptTarget" class="mb-4 pa-3 bg-grey-lighten-4 rounded-lg border text-body-2">
+        <div class="d-flex justify-space-between align-center mb-1">
+          <span class="text-caption text-medium-emphasis">Código:</span>
+          <span class="font-mono font-weight-bold text-high-emphasis">
+            {{ voidReceiptTarget.code }}
+          </span>
+        </div>
+        <div class="d-flex justify-space-between align-center mb-1">
+          <span class="text-caption text-medium-emphasis">Cliente:</span>
+          <span class="font-weight-medium text-high-emphasis">
+            {{ voidReceiptTarget.client_first_name }} {{ voidReceiptTarget.client_last_name }}
+          </span>
+        </div>
+        <div class="d-flex justify-space-between align-center">
+          <span class="text-caption text-medium-emphasis">Fecha:</span>
+          <span class="font-mono text-medium-emphasis">
+            {{ voidReceiptTarget.date }}
+          </span>
+        </div>
+      </div>
+
       <p class="text-body-2 text-medium-emphasis mb-3">
-        Esta acción cancelará el recibo contable y restaurará el saldo original de las cuotas afectadas.
+        Esta acción cancelará el recibo contable y restaurará el saldo original de las cuentas por cobrar vinculadas.
       </p>
       <v-textarea
         v-model="voidReason"
         label="Motivo o justificación de anulación *"
+        placeholder="Indica el motivo de la anulación..."
         variant="outlined"
-        density="compact"
+        density="comfortable"
         rows="3"
         counter="255"
         required
@@ -921,10 +642,11 @@ watch(
     <v-snackbar
       v-model="snackbar.show"
       :color="snackbar.color"
-      timeout="4000"
-      location="top right"
+      :timeout="3500"
+      location="bottom right"
+      data-testid="receipts-snackbar"
     >
-      {{ snackbar.message }}
+      {{ snackbar.text }}
       <template #actions>
         <v-btn icon="mdi-close" size="small" variant="text" @click="snackbar.show = false" />
       </template>
@@ -933,7 +655,19 @@ watch(
 </template>
 
 <style scoped>
-.font-monospace {
+.font-mono {
   font-family: monospace;
+}
+
+.tabular-nums {
+  font-variant-numeric: tabular-nums;
+}
+
+.bg-surface-light {
+  background-color: #F8FAFC;
+}
+
+.min-w-160 {
+  min-width: 160px;
 }
 </style>

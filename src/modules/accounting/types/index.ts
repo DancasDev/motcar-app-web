@@ -153,6 +153,8 @@ export interface ReceiptItem {
   client_id: number | string
   client_first_name?: string
   client_last_name?: string
+  client_identification_type?: string | number
+  client_identification_value?: string
   collector_id?: number | string
   collector_first_name?: string
   collector_last_name?: string
