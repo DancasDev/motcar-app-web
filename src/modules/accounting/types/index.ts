@@ -293,10 +293,12 @@ export interface UpdateReceiptStatusPayload {
 }
 
 export interface FullReceiptEmissionPayload {
+  draftReceiptId?: number | null
   client_id: number
   date?: string
   notes?: string
   items: number[] // IDs de cuentas por cobrar
   payments: ReceiptPaymentPayload[]
   confirmImmediately?: boolean
+  onDraftReady?: (receiptId: number) => void
 }

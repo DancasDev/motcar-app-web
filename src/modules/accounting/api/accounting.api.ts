@@ -16,6 +16,8 @@ import type {
   AccountReceivableItem,
   SyncOverdueSummary,
   ReceiptItem,
+  ReceiptItemEntity,
+  ReceiptPaymentEntity,
   ReceiptDetailItem,
   CreateReceiptPayload,
   ReceiptItemPayload,
@@ -314,6 +316,18 @@ export async function createReceipt(
   return response.data
 }
 
+export async function fetchReceiptItems(
+  branchId: string | number,
+  receiptId: string | number,
+  params?: DataQueryParams
+): Promise<PaginatedResponse<ReceiptItemEntity>> {
+  const response = await apiClient.get<PaginatedResponse<ReceiptItemEntity>>(
+    ENDPOINTS.ACCOUNTING.RECEIPT_ITEMS(branchId, receiptId),
+    { params }
+  )
+  return response.data
+}
+
 export async function addReceiptItem(
   branchId: string | number,
   receiptId: string | number,
@@ -339,6 +353,30 @@ export async function addReceiptItemsBatch(
   return response.data
 }
 
+export async function deleteReceiptItem(
+  branchId: string | number,
+  receiptId: string | number,
+  itemId: string | number
+): Promise<ApiResponse<unknown>> {
+  const response = await apiClient.delete<ApiResponse<unknown>>(
+    ENDPOINTS.ACCOUNTING.RECEIPT_ITEM_BY_ID(branchId, receiptId, itemId),
+    { headers: { 'In-Trash': 'true' } }
+  )
+  return response.data
+}
+
+export async function fetchReceiptPayments(
+  branchId: string | number,
+  receiptId: string | number,
+  params?: DataQueryParams
+): Promise<PaginatedResponse<ReceiptPaymentEntity>> {
+  const response = await apiClient.get<PaginatedResponse<ReceiptPaymentEntity>>(
+    ENDPOINTS.ACCOUNTING.RECEIPT_PAYMENTS(branchId, receiptId),
+    { params }
+  )
+  return response.data
+}
+
 export async function addReceiptPayment(
   branchId: string | number,
   receiptId: string | number,
@@ -360,6 +398,18 @@ export async function addReceiptPaymentsBatch(
     ENDPOINTS.ACCOUNTING.RECEIPT_PAYMENTS(branchId, receiptId),
     payments,
     { params: { is_batch: true } }
+  )
+  return response.data
+}
+
+export async function deleteReceiptPayment(
+  branchId: string | number,
+  receiptId: string | number,
+  paymentId: string | number
+): Promise<ApiResponse<unknown>> {
+  const response = await apiClient.delete<ApiResponse<unknown>>(
+    ENDPOINTS.ACCOUNTING.RECEIPT_PAYMENT_BY_ID(branchId, receiptId, paymentId),
+    { headers: { 'In-Trash': 'true' } }
   )
   return response.data
 }
