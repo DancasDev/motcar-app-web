@@ -16,6 +16,9 @@ import type {
   SaveMetadataFieldPayload,
   SendInvitationPayload,
   SendInvitationResponse,
+  InvitationSetupUserData,
+  CompleteInvitationSetupPayload,
+  CompleteInvitationSetupResponse,
   RequestPasswordRecoveryPayload,
   RequestPasswordRecoveryResponse,
   ConfirmPasswordRecoveryPayload,
@@ -267,6 +270,34 @@ export async function sendUserInvitation(
   const response = await apiClient.post<ApiResponse<SendInvitationResponse>>(
     ENDPOINTS.SYSTEM.INVITATIONS,
     payload
+  )
+  return response.data
+}
+
+export async function fetchInvitationSetupUser(
+  token: string
+): Promise<ApiResponse<InvitationSetupUserData>> {
+  const response = await apiClient.get<ApiResponse<InvitationSetupUserData>>(
+    ENDPOINTS.SYSTEM.INVITATION_SETUP,
+    {
+      params: { token },
+      headers: { Authorization: `Bearer ${token}` }
+    }
+  )
+  return response.data
+}
+
+export async function completeInvitationSetup(
+  payload: CompleteInvitationSetupPayload
+): Promise<ApiResponse<CompleteInvitationSetupResponse>> {
+  const { token, ...body } = payload
+  const response = await apiClient.put<ApiResponse<CompleteInvitationSetupResponse>>(
+    ENDPOINTS.SYSTEM.INVITATION_SETUP,
+    { ...body, token },
+    {
+      params: { token },
+      headers: { Authorization: `Bearer ${token}` }
+    }
   )
   return response.data
 }

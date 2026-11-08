@@ -162,6 +162,22 @@ export interface SendInvitationResponse {
   expires_at: string
 }
 
+export interface InvitationSetupUserData {
+  first_name: string
+  last_name: string
+  photo_url?: string | null
+}
+
+export interface CompleteInvitationSetupPayload {
+  token: string
+  password: string
+  username?: string
+}
+
+export interface CompleteInvitationSetupResponse {
+  user_id: number
+}
+
 /**
  * Recuperación de Contraseña (Password Recovery)
  */

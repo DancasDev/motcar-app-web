@@ -19,6 +19,11 @@ export function setupAuthGuard(router: Router): void {
     const isGuestOnly = to.matched.some((record) => record.meta.guestOnly)
     const isForcedRoute = to.matched.some((record) => record.meta.isForced)
 
+    // Rutas públicas con token de acción propio (ej: /setup) se evalúan de forma autónoma
+    if (to.path === '/setup') {
+      return next()
+    }
+
     // 1. Redirigir a login si la ruta requiere autenticación y no hay sesión activa
     if (requiresAuth && !authStore.isAuthenticated) {
       return next({
