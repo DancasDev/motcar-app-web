@@ -2,6 +2,7 @@
 import { ref, reactive, computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '../stores/auth.store'
+import AppCopyright from '@/components/common/AppCopyright.vue'
 import {
   fetchInvitationSetupUser,
   completeInvitationSetup
@@ -48,13 +49,6 @@ const fullName = computed(() => {
     .filter(Boolean)
     .join(' ')
     .trim()
-})
-
-const userInitials = computed(() => {
-  if (!userData.value) return 'U'
-  const first = userData.value.first_name?.trim().charAt(0) || ''
-  const last = userData.value.last_name?.trim().charAt(0) || ''
-  return (first + last).toUpperCase() || 'U'
 })
 
 // Reglas de contraseña sincronizadas con UserModel::$validationRules['password']
@@ -242,265 +236,298 @@ onMounted(() => {
 </script>
 
 <template>
-  <div class="w-100" data-testid="invitation-setup-view">
-    <!-- 1. Estado de Carga: Verificando Token -->
-    <div
-      v-if="isVerifying"
-      class="text-center py-10"
-      data-testid="setup-loading-state"
-    >
-      <v-progress-circular
-        indeterminate
-        color="primary"
-        size="48"
-        width="4"
-        class="mb-4"
-      />
-      <h2 class="text-h6 font-weight-bold text-high-emphasis mb-1">
-        Verificando tu invitación...
-      </h2>
-      <p class="text-body-2 text-medium-emphasis">
-        Estamos validando tu enlace de acceso para configurar tu cuenta.
-      </p>
-    </div>
-
-    <!-- 2. Estado de Error de Token (Inválido, Expirado o Ya Utilizado) -->
-    <div
-      v-else-if="tokenError"
-      class="text-center py-4"
-      data-testid="setup-error-state"
-    >
-      <v-avatar
-        :color="`${tokenError.color}-lighten-5`"
-        size="68"
-        class="mb-4"
-      >
-        <v-icon
-          :icon="tokenError.icon"
-          :color="tokenError.color"
-          size="34"
+  <div class="setup-layout fill-height d-flex flex-column bg-grey-lighten-4" data-testid="invitation-setup-view">
+    <!-- Barra Superior Minimalista (Logo a la izquierda) -->
+    <header class="setup-header px-6 py-3 bg-surface border-b d-flex align-center justify-space-between">
+      <div class="d-flex align-center">
+        <v-img
+          src="/images/motcar-logo.png"
+          alt="MotCar"
+          width="140"
+          max-width="140"
+          height="auto"
         />
-      </v-avatar>
-
-      <h2
-        class="text-h5 font-weight-bold text-high-emphasis mb-2"
-        data-testid="setup-error-title"
-      >
-        {{ tokenError.title }}
-      </h2>
-
-      <p
-        class="text-body-2 text-medium-emphasis mb-6"
-        data-testid="setup-error-message"
-      >
-        {{ tokenError.message }}
-      </p>
-
-      <v-btn
-        color="primary"
-        block
-        size="large"
-        rounded="lg"
-        variant="flat"
-        prepend-icon="mdi-login"
-        class="text-none font-weight-bold setup-submit-btn"
-        data-testid="btn-setup-error-go-login"
-        @click="goToLogin(false)"
-      >
-        Ir a Iniciar Sesión
-      </v-btn>
-    </div>
-
-    <!-- 3. Estado de Éxito: Cuenta Activada -->
-    <div
-      v-else-if="isCompleted"
-      class="text-center py-4"
-      data-testid="setup-success-state"
-    >
-      <v-avatar color="success-lighten-5" size="68" class="mb-4">
-        <v-icon icon="mdi-check-decagram" color="success" size="36" />
-      </v-avatar>
-
-      <h2
-        class="text-h4 font-weight-bold text-high-emphasis mb-2"
-        data-testid="setup-success-title"
-      >
-        ¡Cuenta activada!
-      </h2>
-
-      <p
-        class="text-body-2 text-medium-emphasis mb-6"
-        data-testid="setup-success-message"
-      >
-        {{ successMessage }}
-      </p>
-
-      <v-btn
-        color="primary"
-        block
-        size="large"
-        rounded="lg"
-        variant="flat"
-        prepend-icon="mdi-login"
-        class="text-none font-weight-bold setup-submit-btn"
-        data-testid="btn-setup-success-login"
-        @click="goToLogin(true)"
-      >
-        Iniciar Sesión Ahora
-      </v-btn>
-    </div>
-
-    <!-- 4. Estado Principal: Formulario de Configuración de Contraseña -->
-    <div v-else data-testid="setup-form-state">
-      <!-- Encabezado de Bienvenida Personalizado -->
-      <div class="text-center mb-6">
-        <v-avatar
-          color="primary"
-          size="64"
-          class="mb-3 elevation-1"
-          data-testid="setup-user-avatar"
-        >
-          <v-img
-            v-if="userData?.photo_url"
-            :src="userData.photo_url"
-            :alt="fullName || 'Usuario'"
-            cover
-          />
-          <span v-else class="text-h6 font-weight-bold text-white">
-            {{ userInitials }}
-          </span>
-        </v-avatar>
-
-        <h2
-          class="text-h4 font-weight-bold text-high-emphasis mb-1"
-          data-testid="setup-welcome-title"
-        >
-          {{ fullName ? `¡Hola, ${fullName}!` : 'Configura tu contraseña' }}
-        </h2>
-
-        <p class="text-body-2 text-medium-emphasis">
-          Establece una contraseña segura para activar tu cuenta y comenzar a usar la plataforma.
-        </p>
       </div>
 
-      <!-- Alerta de Error de Envío -->
-      <v-alert
-        v-if="errorMessage"
-        type="error"
-        variant="tonal"
-        closable
-        density="comfortable"
-        rounded="lg"
-        class="mb-4 text-body-2"
-        data-testid="setup-submit-error-alert"
-        @click:close="errorMessage = ''"
-      >
-        {{ errorMessage }}
-      </v-alert>
-
-      <v-form ref="formRef" @submit.prevent="handleSubmit">
-        <v-text-field
-          v-model="formData.password"
-          label="Nueva contraseña"
-          placeholder="Introduce tu contraseña"
-          prepend-inner-icon="mdi-lock-outline"
-          :type="showPassword ? 'text' : 'password'"
-          :append-inner-icon="showPassword ? 'mdi-eye-off-outline' : 'mdi-eye-outline'"
-          variant="outlined"
-          density="comfortable"
-          rounded="lg"
-          :error-messages="[
-            ...(!hasOnlyAllowedChars ? ['La contraseña contiene caracteres o espacios no permitidos'] : []),
-            ...(passwordFieldError ? [passwordFieldError] : [])
-          ]"
-          :disabled="isSubmitting"
-          autocomplete="new-password"
-          class="mb-3"
-          data-testid="input-setup-password"
-          @input="passwordFieldError = ''"
-          @click:append-inner="showPassword = !showPassword"
-        />
-
-        <v-text-field
-          v-model="formData.confirm_password"
-          label="Confirmar contraseña"
-          placeholder="Repite tu contraseña"
-          prepend-inner-icon="mdi-lock-check-outline"
-          :type="showConfirmPassword ? 'text' : 'password'"
-          :append-inner-icon="showConfirmPassword ? 'mdi-eye-off-outline' : 'mdi-eye-outline'"
-          variant="outlined"
-          density="comfortable"
-          rounded="lg"
-          :error-messages="
-            formData.confirm_password && !doPasswordsMatch
-              ? ['Las contraseñas no coinciden']
-              : []
-          "
-          :disabled="isSubmitting"
-          autocomplete="new-password"
-          class="mb-4"
-          data-testid="input-setup-confirm-password"
-          @click:append-inner="showConfirmPassword = !showConfirmPassword"
-        />
-
-        <!-- Checklist de Requisitos de Contraseña -->
-        <v-card variant="tonal" rounded="lg" color="grey" class="pa-4 mb-5">
-          <div class="text-caption font-weight-bold text-uppercase mb-2 text-medium-emphasis">
-            Requisitos de la contraseña:
-          </div>
-          <div
-            v-for="(crit, idx) in passwordCriteria"
-            :key="idx"
-            class="d-flex align-center text-caption mb-1"
-            :class="crit.valid ? 'text-success font-weight-medium' : 'text-medium-emphasis'"
-            :data-testid="'setup-criteria-row-' + idx"
-          >
-            <v-icon
-              :icon="crit.valid ? 'mdi-check-circle' : 'mdi-checkbox-blank-circle-outline'"
-              :color="crit.valid ? 'success' : 'grey'"
-              size="14"
-              class="mr-2"
-            />
-            <span :class="crit.valid ? 'text-success' : ''">{{ crit.label }}</span>
-          </div>
-        </v-card>
-
+      <div class="d-flex align-center">
         <v-btn
-          type="submit"
-          color="primary"
-          block
-          size="large"
-          rounded="lg"
-          variant="flat"
-          prepend-icon="mdi-key-check"
-          :disabled="!canSubmit"
-          :loading="isSubmitting"
-          class="text-none font-weight-bold mb-4 setup-submit-btn"
-          data-testid="btn-setup-submit"
-        >
-          Configurar Contraseña
-        </v-btn>
-      </v-form>
-
-      <!-- Enlace Volver a Login -->
-      <div class="text-center">
-        <v-btn
-          variant="plain"
+          variant="text"
           size="small"
-          color="medium-emphasis"
-          class="text-none"
-          prepend-icon="mdi-arrow-left"
-          data-testid="btn-setup-back-login"
+          color="primary"
+          prepend-icon="mdi-login"
+          class="text-none font-weight-medium"
+          data-testid="btn-header-login"
           @click="goToLogin(false)"
         >
-          Volver a Iniciar Sesión
+          <span class="d-none d-sm-inline">Iniciar Sesión</span>
         </v-btn>
       </div>
-    </div>
+    </header>
+
+    <!-- Contenido Centrado -->
+    <main class="flex-grow-1 d-flex align-center justify-center pa-4 pa-sm-6">
+      <v-card
+        elevation="0"
+        rounded="xl"
+        class="border pa-6 pa-sm-8 bg-surface"
+        style="width: 100%; max-width: 460px; box-shadow: 0 10px 30px rgba(0,0,0,0.04) !important;"
+      >
+        <!-- 1. Estado de Carga: Verificando Token -->
+        <div
+          v-if="isVerifying"
+          class="text-center py-6"
+          data-testid="setup-loading-state"
+        >
+          <v-progress-circular
+            indeterminate
+            color="primary"
+            size="48"
+            width="4"
+            class="mb-4"
+          />
+          <h2 class="text-h6 font-weight-bold text-high-emphasis mb-1">
+            Verificando tu invitación...
+          </h2>
+          <p class="text-body-2 text-medium-emphasis">
+            Estamos validando tu enlace de acceso para configurar tu cuenta.
+          </p>
+        </div>
+
+        <!-- 2. Estado de Error de Token (Inválido, Expirado o Ya Utilizado) -->
+        <div
+          v-else-if="tokenError"
+          class="text-center py-2"
+          data-testid="setup-error-state"
+        >
+          <v-avatar
+            :color="`${tokenError.color}-lighten-5`"
+            size="64"
+            class="mb-4"
+          >
+            <v-icon
+              :icon="tokenError.icon"
+              :color="tokenError.color"
+              size="32"
+            />
+          </v-avatar>
+
+          <h2
+            class="text-h5 font-weight-bold text-high-emphasis mb-2"
+            data-testid="setup-error-title"
+          >
+            {{ tokenError.title }}
+          </h2>
+
+          <p
+            class="text-body-2 text-medium-emphasis mb-6"
+            data-testid="setup-error-message"
+          >
+            {{ tokenError.message }}
+          </p>
+
+          <v-btn
+            color="primary"
+            block
+            size="large"
+            rounded="lg"
+            variant="flat"
+            prepend-icon="mdi-login"
+            class="text-none font-weight-bold setup-submit-btn"
+            data-testid="btn-setup-error-go-login"
+            @click="goToLogin(false)"
+          >
+            Ir a Iniciar Sesión
+          </v-btn>
+        </div>
+
+        <!-- 3. Estado de Éxito: Cuenta Activada -->
+        <div
+          v-else-if="isCompleted"
+          class="text-center py-2"
+          data-testid="setup-success-state"
+        >
+          <v-avatar color="success-lighten-5" size="64" class="mb-4">
+            <v-icon icon="mdi-check-decagram" color="success" size="34" />
+          </v-avatar>
+
+          <h2
+            class="text-h5 font-weight-bold text-high-emphasis mb-2"
+            data-testid="setup-success-title"
+          >
+            ¡Cuenta activada!
+          </h2>
+
+          <p
+            class="text-body-2 text-medium-emphasis mb-6"
+            data-testid="setup-success-message"
+          >
+            {{ successMessage }}
+          </p>
+
+          <v-btn
+            color="primary"
+            block
+            size="large"
+            rounded="lg"
+            variant="flat"
+            prepend-icon="mdi-login"
+            class="text-none font-weight-bold setup-submit-btn"
+            data-testid="btn-setup-success-login"
+            @click="goToLogin(true)"
+          >
+            Iniciar Sesión Ahora
+          </v-btn>
+        </div>
+
+        <!-- 4. Estado Principal: Formulario de Configuración de Contraseña -->
+        <div v-else data-testid="setup-form-state">
+          <!-- Ícono de Llave Destacado y Bienvenida (Estilo ForcePassword / SGA) -->
+          <div class="text-center mb-6">
+            <v-avatar color="amber-lighten-5" size="64" class="mb-3">
+              <v-icon icon="mdi-key-variant" color="amber-darken-2" size="32" />
+            </v-avatar>
+            <h2
+              class="text-h5 font-weight-bold text-high-emphasis mb-1"
+              data-testid="setup-welcome-title"
+            >
+              {{ fullName ? `¡Hola, ${fullName}!` : 'Configura tu contraseña' }}
+            </h2>
+            <p class="text-body-2 text-medium-emphasis">
+              Por favor establece una contraseña segura para activar tu cuenta y comenzar a usar el sistema.
+            </p>
+          </div>
+
+          <!-- Alerta de Error de Envío -->
+          <v-alert
+            v-if="errorMessage"
+            type="error"
+            variant="tonal"
+            closable
+            density="comfortable"
+            rounded="lg"
+            class="mb-4 text-body-2"
+            data-testid="setup-submit-error-alert"
+            @click:close="errorMessage = ''"
+          >
+            {{ errorMessage }}
+          </v-alert>
+
+          <v-form ref="formRef" @submit.prevent="handleSubmit">
+            <v-text-field
+              v-model="formData.password"
+              label="Nueva contraseña"
+              placeholder="Introduce tu nueva contraseña"
+              prepend-inner-icon="mdi-lock-plus-outline"
+              :type="showPassword ? 'text' : 'password'"
+              :append-inner-icon="showPassword ? 'mdi-eye-off-outline' : 'mdi-eye-outline'"
+              variant="outlined"
+              density="comfortable"
+              rounded="lg"
+              :error-messages="[
+                ...(!hasOnlyAllowedChars ? ['La contraseña contiene caracteres o espacios no permitidos'] : []),
+                ...(passwordFieldError ? [passwordFieldError] : [])
+              ]"
+              :disabled="isSubmitting"
+              autocomplete="new-password"
+              class="mb-3"
+              data-testid="input-setup-password"
+              @input="passwordFieldError = ''"
+              @click:append-inner="showPassword = !showPassword"
+            />
+
+            <v-text-field
+              v-model="formData.confirm_password"
+              label="Confirmar nueva contraseña"
+              placeholder="Repite tu nueva contraseña"
+              prepend-inner-icon="mdi-lock-check-outline"
+              :type="showConfirmPassword ? 'text' : 'password'"
+              :append-inner-icon="showConfirmPassword ? 'mdi-eye-off-outline' : 'mdi-eye-outline'"
+              variant="outlined"
+              density="comfortable"
+              rounded="lg"
+              :error-messages="
+                formData.confirm_password && !doPasswordsMatch
+                  ? ['Las contraseñas no coinciden']
+                  : []
+              "
+              :disabled="isSubmitting"
+              autocomplete="new-password"
+              class="mb-4"
+              data-testid="input-setup-confirm-password"
+              @click:append-inner="showConfirmPassword = !showConfirmPassword"
+            />
+
+            <!-- Checklist de Requisitos de Contraseña -->
+            <v-card variant="tonal" rounded="lg" color="grey" class="pa-4 mb-5">
+              <div class="text-caption font-weight-bold text-uppercase mb-2 text-medium-emphasis">
+                Requisitos de la contraseña:
+              </div>
+              <div
+                v-for="(crit, idx) in passwordCriteria"
+                :key="idx"
+                class="d-flex align-center text-caption mb-1"
+                :class="crit.valid ? 'text-success font-weight-medium' : 'text-medium-emphasis'"
+                :data-testid="'setup-criteria-row-' + idx"
+              >
+                <v-icon
+                  :icon="crit.valid ? 'mdi-check-circle' : 'mdi-checkbox-blank-circle-outline'"
+                  :color="crit.valid ? 'success' : 'grey'"
+                  size="14"
+                  class="mr-2"
+                />
+                <span :class="crit.valid ? 'text-success' : ''">{{ crit.label }}</span>
+              </div>
+            </v-card>
+
+            <v-btn
+              type="submit"
+              color="primary"
+              block
+              size="large"
+              rounded="lg"
+              variant="flat"
+              prepend-icon="mdi-key-check"
+              :disabled="!canSubmit"
+              :loading="isSubmitting"
+              class="text-none font-weight-bold setup-submit-btn mb-4"
+              data-testid="btn-setup-submit"
+            >
+              Configurar contraseña y activar cuenta
+            </v-btn>
+          </v-form>
+
+          <!-- Enlace Volver a Login -->
+          <div class="text-center">
+            <v-btn
+              variant="plain"
+              size="small"
+              color="medium-emphasis"
+              class="text-none"
+              prepend-icon="mdi-arrow-left"
+              data-testid="btn-setup-back-login"
+              @click="goToLogin(false)"
+            >
+              Volver a Iniciar Sesión
+            </v-btn>
+          </div>
+        </div>
+      </v-card>
+    </main>
+
+    <!-- Pie de Página Institucional -->
+    <footer class="py-3 px-6 text-center">
+      <AppCopyright />
+    </footer>
   </div>
 </template>
 
 <style scoped>
+.setup-header {
+  position: sticky;
+  top: 0;
+  z-index: 100;
+}
+
 .setup-submit-btn {
   height: 48px;
 }

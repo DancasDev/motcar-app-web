@@ -39,16 +39,9 @@ export const routes: RouteRecordRaw[] = [
   },
   {
     path: '/setup',
-    component: () => import('@/layouts/AuthLayout.vue'),
-    meta: { requiresAuth: false, showBranchSelector: false },
-    children: [
-      {
-        path: '',
-        name: 'InvitationSetup',
-        component: () => import('@/modules/auth/views/InvitationSetupView.vue'),
-        meta: { title: 'Configurar Contraseña - Motcar App', requiresAuth: false, showBranchSelector: false }
-      }
-    ]
+    name: 'InvitationSetup',
+    component: () => import('@/modules/auth/views/InvitationSetupView.vue'),
+    meta: { title: 'Configurar Contraseña - Motcar App', requiresAuth: false, showBranchSelector: false }
   },
   {
     path: '/force-password-change',

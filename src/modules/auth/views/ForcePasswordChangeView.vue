@@ -109,27 +109,13 @@ async function handleLogout(): Promise<void> {
         <v-img
           src="/images/motcar-logo.png"
           alt="MotCar"
+          width="140"
           max-width="140"
           height="auto"
         />
       </div>
 
-      <div class="d-flex align-center" style="gap: 12px;">
-        <!-- Cápsula de Usuario -->
-        <div class="d-none d-sm-flex align-center user-capsule pa-1 pr-3 rounded-pill border">
-          <v-avatar color="primary" size="32" class="mr-2 text-white font-weight-bold text-caption">
-            {{ (authStore.fullName || authStore.user?.username || 'U').charAt(0).toUpperCase() }}
-          </v-avatar>
-          <div class="mr-2 text-left" style="line-height: 1.2;">
-            <div class="text-caption font-weight-bold text-truncate" style="max-width: 120px;">
-              {{ authStore.fullName || authStore.user?.username }}
-            </div>
-            <div class="text-caption text-medium-emphasis" style="font-size: 0.7rem;">
-              {{ authStore.userRoleCodes[0] || 'Usuario' }}
-            </div>
-          </div>
-        </div>
-
+      <div class="d-flex align-center">
         <v-btn
           icon="mdi-logout"
           variant="outlined"
@@ -138,6 +124,7 @@ async function handleLogout(): Promise<void> {
           density="comfortable"
           color="error"
           title="Cerrar Sesión"
+          data-testid="btn-header-logout"
           @click="handleLogout"
         />
       </div>
@@ -157,7 +144,7 @@ async function handleLogout(): Promise<void> {
             <v-icon icon="mdi-key-variant" color="amber-darken-2" size="32" />
           </v-avatar>
           <h2 class="text-h5 font-weight-bold text-high-emphasis mb-1">
-            Actualización requerida
+            {{ authStore.fullName ? `¡Hola, ${authStore.fullName}!` : 'Actualización requerida' }}
           </h2>
           <p class="text-body-2 text-medium-emphasis">
             Por políticas de seguridad del sistema, debes establecer una nueva contraseña segura antes de continuar.
@@ -283,8 +270,5 @@ async function handleLogout(): Promise<void> {
   position: sticky;
   top: 0;
   z-index: 100;
-}
-.user-capsule {
-  background: rgba(148, 163, 184, 0.08);
 }
 </style>
