@@ -26,16 +26,9 @@ export const routes: RouteRecordRaw[] = [
   },
   {
     path: '/recovery',
-    component: () => import('@/layouts/AuthLayout.vue'),
-    meta: { guestOnly: true, showBranchSelector: false },
-    children: [
-      {
-        path: '',
-        name: 'Recovery',
-        component: () => import('@/modules/auth/views/RecoveryView.vue'),
-        meta: { title: 'Recuperar Contraseña - Motcar App', guestOnly: true, showBranchSelector: false }
-      }
-    ]
+    name: 'Recovery',
+    component: () => import('@/modules/auth/views/RecoveryView.vue'),
+    meta: { title: 'Recuperar Contraseña - Motcar App', guestOnly: true, showBranchSelector: false }
   },
   {
     path: '/setup',

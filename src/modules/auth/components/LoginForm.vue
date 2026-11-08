@@ -1,23 +1,21 @@
 <script setup lang="ts">
 import { ref, reactive, watch, onMounted } from "vue";
-import { useRoute } from "vue-router";
+import { useRoute, useRouter } from "vue-router";
 import { useAuthStore } from "../stores/auth.store";
 import type { LoginUserRequest } from "../types";
-import PasswordRecoveryDialog from "@/modules/system/components/PasswordRecoveryDialog.vue";
 
 const emit = defineEmits<{
   (e: "success"): void;
 }>();
 
 const route = useRoute();
+const router = useRouter();
 const authStore = useAuthStore();
 
 const formRef = ref<{ validate: () => Promise<{ valid: boolean }> } | null>(
   null,
 );
 const showPassword = ref(false);
-const isRecoveryOpen = ref(false);
-const recoverySuccessSnackbar = ref(false);
 const showPasswordUpdatedAlert = ref(false);
 const isShaking = ref(false);
 
@@ -26,10 +24,6 @@ onMounted(() => {
     showPasswordUpdatedAlert.value = true;
   }
 });
-
-function handleRecoverySuccess(_email: string): void {
-  recoverySuccessSnackbar.value = true;
-}
 
 const credentials = reactive<LoginUserRequest>({
   username: "",
@@ -173,7 +167,7 @@ async function handleSubmit(): Promise<void> {
             { 'animate-shake': isShaking },
           ]"
           data-testid="btn-forgot-password"
-          @click="isRecoveryOpen = true"
+          @click="router.push('/recovery')"
         >
           ¿Olvidaste tu contraseña?
         </v-btn>
@@ -196,27 +190,6 @@ async function handleSubmit(): Promise<void> {
         Iniciar Sesión
       </v-btn>
     </v-form>
-
-    <!-- Modal de Recuperación de Contraseña (Servicio del Sistema) -->
-    <PasswordRecoveryDialog
-      v-model="isRecoveryOpen"
-      @success="handleRecoverySuccess"
-    />
-
-    <!-- Feedback de Restablecimiento Exitoso -->
-    <v-snackbar
-      v-model="recoverySuccessSnackbar"
-      color="success"
-      location="bottom right"
-      timeout="5000"
-      rounded="lg"
-    >
-      <div class="d-flex align-center">
-        <v-icon icon="mdi-check-circle" class="mr-2" />
-        Contraseña restablecida exitosamente. Inicia sesión con tus nuevas
-        credenciales.
-      </div>
-    </v-snackbar>
   </div>
 </template>
 
