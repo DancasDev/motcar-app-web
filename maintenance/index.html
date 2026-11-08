@@ -32,24 +32,27 @@
       padding: 0;
     }
 
-    html, body {
-      height: 100%;
+    html {
       width: 100%;
+      min-height: 100%;
     }
 
     body {
+      width: 100%;
+      min-height: 100%;
       font-family: var(--font-family);
       background-color: var(--surface);
       color: var(--text-main);
-      display: flex;
-      flex-direction: column;
-      min-height: 100vh;
       line-height: 1.5;
       -webkit-font-smoothing: antialiased;
     }
 
-    /* Barra Superior Edge-to-Edge */
+    /* Barra Superior Fija Edge-to-Edge */
     .app-header {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
       width: 100%;
       height: 76px;
       padding: 0 48px;
@@ -57,8 +60,8 @@
       align-items: center;
       justify-content: space-between;
       border-bottom: 1px solid var(--border);
-      background: var(--surface);
-      flex-shrink: 0;
+      background-color: var(--surface);
+      z-index: 1000;
     }
 
     .logo-container {
@@ -102,14 +105,12 @@
       50% { opacity: 0.6; transform: scale(1.25); }
     }
 
-    /* Contenedor Principal que ocupa todo el espacio restante */
+    /* Contenedor Principal */
     .main-viewport {
-      flex: 1 0 auto;
       width: 100%;
       display: flex;
       align-items: center;
       justify-content: center;
-      padding: 48px;
     }
 
     .content-grid {
@@ -176,7 +177,6 @@
     .illustration-svg {
       width: 100%;
       height: auto;
-      max-width: 580px;
       display: block;
       filter: drop-shadow(0 15px 35px rgba(14, 84, 164, 0.06));
     }
@@ -186,51 +186,110 @@
       width: 100%;
       height: 64px;
       padding: 0 48px;
-      background: var(--surface);
+      background-color: var(--surface);
       border-top: 1px solid var(--border);
       display: flex;
       align-items: center;
       justify-content: center;
       font-size: 13px;
       color: var(--text-muted);
-      flex-shrink: 0;
     }
 
-    /* Responsividad */
-    @media (max-width: 960px) {
+    /* Pantallas de Escritorio (Desktop): Header fijado arriba, footer fijado totalmente abajo */
+    @media (min-width: 960px) {
+      body {
+        height: 100vh;
+        overflow: hidden;
+        display: flex;
+        flex-direction: column;
+      }
+
+      .app-footer {
+        position: fixed;
+        bottom: 0;
+        left: 0;
+        right: 0;
+        z-index: 1000;
+      }
+
+      .main-viewport {
+        margin-top: 76px;
+        margin-bottom: 64px;
+        height: calc(100vh - 140px);
+        overflow-y: auto;
+        padding: 24px 48px;
+      }
+
+      .illustration-svg {
+        max-width: 560px;
+        max-height: min(430px, calc(100vh - 220px));
+      }
+    }
+
+    /* Pantallas Móviles: Header fijado arriba, footer al final del scroll natural */
+    @media (max-width: 959px) {
+      body {
+        min-height: 100vh;
+        display: flex;
+        flex-direction: column;
+        overflow-x: hidden;
+      }
+
       .app-header {
         height: 68px;
         padding: 0 20px;
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        z-index: 1000;
       }
+
       .logo-container img {
         height: 36px;
       }
+
       .status-pill {
         padding: 5px 10px;
         font-size: 12px;
       }
+
       .main-viewport {
-        padding: 32px 20px 40px;
+        flex: 1 0 auto;
+        margin-top: 68px;
+        margin-bottom: 0;
+        min-height: calc(100vh - 68px - 56px);
+        padding: 24px 20px 36px;
         align-items: flex-start;
       }
+
       .content-grid {
         grid-template-columns: 1fr;
         gap: 36px;
         text-align: center;
       }
+
       .content-col {
         align-items: center;
         max-width: 100%;
       }
+
       .illustration-col {
         order: -1;
       }
+
       .illustration-svg {
-        max-width: 380px;
+        max-width: 340px;
+        max-height: none;
       }
+
       .app-footer {
+        flex-shrink: 0;
+        position: relative;
+        margin-top: auto;
         padding: 0 20px;
         font-size: 12px;
+        height: 56px;
       }
     }
   </style>
