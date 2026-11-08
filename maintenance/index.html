@@ -1,0 +1,514 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Mantenimiento - MotCar</title>
+  
+  <!-- Favicons dentro de maintenance/ -->
+  <link rel="icon" type="image/svg+xml" href="./favicon.svg">
+  <link rel="alternate icon" type="image/png" href="./favicon-32x32.png">
+  <link rel="apple-touch-icon" href="./apple-touch-icon.png">
+
+  <style>
+    :root {
+      --primary: #0E54A4;
+      --primary-dark: #093B75;
+      --primary-light: #EBF3FC;
+      --secondary: #DBB51D;
+      --secondary-dark: #B89714;
+      --secondary-light: #FEF9E7;
+      --bg-page: #EEF2F6;
+      --surface: #FFFFFF;
+      --text-main: #0F172A;
+      --text-muted: #64748B;
+      --border: #E2E8F0;
+      --radius-xl: 24px;
+      --radius-pill: 9999px;
+      --font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+    }
+
+    *, *::before, *::after {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    html, body {
+      min-height: 100%;
+    }
+
+    body {
+      font-family: var(--font-family);
+      background-color: var(--bg-page);
+      background-image: 
+        radial-gradient(at 0% 0%, rgba(14, 84, 164, 0.07) 0px, transparent 50%),
+        radial-gradient(at 100% 100%, rgba(219, 181, 29, 0.08) 0px, transparent 50%);
+      color: var(--text-main);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 32px 16px;
+      line-height: 1.5;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    /* Tarjeta Principal Centrada (Inspirada en el layout de referencia) */
+    .maintenance-card {
+      background: var(--surface);
+      width: 100%;
+      max-width: 1140px;
+      border-radius: var(--radius-xl);
+      box-shadow: 
+        0 25px 50px -12px rgba(14, 84, 164, 0.09),
+        0 0 0 1px rgba(226, 232, 240, 0.9);
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      margin: auto 0;
+    }
+
+    /* Barra Superior Minimalista con Logo MotCar */
+    .card-header {
+      padding: 24px 44px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      border-bottom: 1px solid var(--border);
+      background: var(--surface);
+    }
+
+    .logo-container {
+      display: flex;
+      align-items: center;
+    }
+
+    .logo-container img {
+      height: 44px;
+      width: auto;
+      display: block;
+      object-fit: contain;
+    }
+
+    /* Pastilla de Estado del Mantenimiento */
+    .status-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      background: var(--secondary-light);
+      border: 1px solid rgba(219, 181, 29, 0.45);
+      color: #8C6603;
+      font-size: 13px;
+      font-weight: 600;
+      padding: 6px 14px;
+      border-radius: var(--radius-pill);
+      white-space: nowrap;
+    }
+
+    .status-dot {
+      width: 8px;
+      height: 8px;
+      background: var(--secondary);
+      border-radius: 50%;
+      box-shadow: 0 0 0 3px rgba(219, 181, 29, 0.25);
+      animation: pulse 2s infinite ease-in-out;
+    }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50% { opacity: 0.6; transform: scale(1.25); }
+    }
+
+    /* Cuerpo Principal en 2 Columnas */
+    .card-body {
+      display: grid;
+      grid-template-columns: 1.05fr 1fr;
+      gap: 40px;
+      padding: 56px 44px 52px;
+      align-items: center;
+    }
+
+    /* Columna Izquierda: Textos */
+    .content-col {
+      display: flex;
+      flex-direction: column;
+      align-items: flex-start;
+      max-width: 500px;
+    }
+
+    .headline-group {
+      margin-bottom: 22px;
+    }
+
+    .oops-title {
+      font-size: clamp(52px, 6.5vw, 76px);
+      font-weight: 900;
+      line-height: 1;
+      letter-spacing: -0.035em;
+      color: var(--primary);
+      margin-bottom: 8px;
+    }
+
+    .sub-headline {
+      font-size: clamp(26px, 3.2vw, 36px);
+      font-weight: 800;
+      color: var(--text-main);
+      line-height: 1.2;
+      letter-spacing: -0.02em;
+    }
+
+    .description {
+      font-size: 16px;
+      color: var(--text-muted);
+      line-height: 1.7;
+      margin-bottom: 16px;
+    }
+
+    .sub-description {
+      font-size: 15px;
+      color: var(--text-muted);
+      line-height: 1.6;
+    }
+
+    /* Columna Derecha: Ilustración Vectorial */
+    .illustration-col {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      position: relative;
+    }
+
+    .illustration-svg {
+      width: 100%;
+      height: auto;
+      max-width: 530px;
+      display: block;
+      filter: drop-shadow(0 15px 30px rgba(14, 84, 164, 0.05));
+    }
+
+    /* Pie de Tarjeta */
+    .card-footer {
+      padding: 20px 44px;
+      background: #FAFCFE;
+      border-top: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 13px;
+      color: var(--text-muted);
+    }
+
+    /* Responsividad */
+    @media (max-width: 960px) {
+      body {
+        padding: 16px 12px;
+      }
+      .card-header {
+        padding: 18px 24px;
+      }
+      .status-pill {
+        padding: 5px 10px;
+        font-size: 12px;
+      }
+      .logo-container img {
+        height: 36px;
+      }
+      .card-body {
+        grid-template-columns: 1fr;
+        padding: 36px 24px 32px;
+        gap: 32px;
+        text-align: center;
+      }
+      .content-col {
+        align-items: center;
+        max-width: 100%;
+      }
+      .illustration-col {
+        order: -1;
+      }
+      .illustration-svg {
+        max-width: 380px;
+      }
+      .card-footer {
+        padding: 16px 24px;
+        flex-direction: column;
+        gap: 8px;
+        text-align: center;
+      }
+    }
+  </style>
+</head>
+<body>
+
+  <main class="maintenance-card">
+    <!-- Encabezado con Logotipo MotCar y Pastilla de Estado -->
+    <header class="card-header">
+      <div class="logo-container">
+        <img 
+          src="./images/motcar-logo.png" 
+          onerror="this.onerror=null; this.src='images/motcar-logo.png';" 
+          alt="MotCar Financiamientos"
+        />
+      </div>
+
+      <div class="status-pill">
+        <span class="status-dot"></span>
+        <span>Mantenimiento Activo</span>
+      </div>
+    </header>
+
+    <!-- Sección Central con Textos e Ilustración Vectorial -->
+    <section class="card-body">
+      <!-- Columna Izquierda: Información Textual Pura -->
+      <div class="content-col">
+        <div class="headline-group">
+          <div class="oops-title">¡Ups!</div>
+          <h1 class="sub-headline">Estamos en mantenimiento</h1>
+        </div>
+
+        <p class="description">
+          Actualmente nos encontramos realizando labores de mantenimiento y optimización para brindarte una plataforma más rápida, fluida y segura.
+        </p>
+
+        <p class="sub-description">
+          Agradecemos tu paciencia mientras completamos estas mejoras. Volveremos a estar disponibles muy pronto.
+        </p>
+      </div>
+
+      <!-- Columna Derecha: Ilustración Vectorial en Estilo unDraw -->
+      <div class="illustration-col">
+        <svg class="illustration-svg" viewBox="0 0 620 440" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <defs>
+            <!-- Patrón de franjas diagonales para la cinta de peligro -->
+            <pattern id="hazardStripes" width="24" height="24" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+              <rect width="12" height="24" fill="#DBB51D" />
+              <rect x="12" width="12" height="24" fill="#0A2540" />
+            </pattern>
+            <!-- Gradiente para pantalla de laptop -->
+            <linearGradient id="screenGrad" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stop-color="#0E54A4" />
+              <stop offset="100%" stop-color="#093B75" />
+            </linearGradient>
+            <!-- Sombras suaves -->
+            <filter id="softGlow" x="-10%" y="-10%" width="120%" height="120%">
+              <feDropShadow dx="0" dy="8" stdDeviation="10" flood-color="#0E54A4" flood-opacity="0.1" />
+            </filter>
+            <filter id="signShadow" x="-20%" y="-20%" width="140%" height="140%">
+              <feDropShadow dx="0" dy="6" stdDeviation="6" flood-color="#000000" flood-opacity="0.16" />
+            </filter>
+          </defs>
+
+          <!-- 1. Fondo Orgánico Suave (Estilo unDraw) -->
+          <path d="M140,360 C100,240 160,130 280,110 C380,95 480,120 540,180 C600,240 600,340 530,390 C460,430 200,430 140,360 Z" fill="#EBF3FC" opacity="0.85" />
+          
+          <!-- Siluetas sutiles de servidores / edificios en el fondo -->
+          <rect x="210" y="210" width="36" height="150" rx="4" fill="#D6E4F6" opacity="0.6" />
+          <rect x="254" y="180" width="44" height="180" rx="4" fill="#CBDDF2" opacity="0.7" />
+          <rect x="420" y="200" width="40" height="160" rx="4" fill="#D6E4F6" opacity="0.6" />
+          
+          <!-- Elemento vegetal / árbol redondeado a la izquierda -->
+          <line x1="165" y1="360" x2="165" y2="395" stroke="#94A3B8" stroke-width="4" stroke-linecap="round" />
+          <circle cx="165" cy="340" r="26" fill="#3B82F6" opacity="0.3" />
+
+          <!-- Sombra de contacto en el suelo -->
+          <ellipse cx="340" cy="405" rx="230" ry="14" fill="#E2E8F0" opacity="0.8" />
+
+          <!-- 2. Laptop Gigante (Representación de la plataforma web) -->
+          <g filter="url(#softGlow)">
+            <!-- Marco exterior de pantalla -->
+            <rect x="180" y="180" width="280" height="195" rx="12" fill="#1E293B" />
+            <!-- Cámara web -->
+            <circle cx="320" cy="188" r="2.5" fill="#475569" />
+            <!-- Pantalla interna -->
+            <rect x="192" y="198" width="256" height="165" rx="5" fill="url(#screenGrad)" />
+            <!-- Barra superior de ventana interna -->
+            <rect x="192" y="198" width="256" height="20" rx="4" fill="#072C59" />
+            <!-- Botones de ventana macOS / navegador -->
+            <circle cx="204" cy="208" r="3" fill="#EF4444" />
+            <circle cx="214" cy="208" r="3" fill="#DBB51D" />
+            <circle cx="224" cy="208" r="3" fill="#10B981" />
+            
+            <!-- Líneas de código simuladas dentro de la pantalla -->
+            <rect x="206" y="230" width="70" height="6" rx="3" fill="#60A5FA" opacity="0.7" />
+            <rect x="282" y="230" width="90" height="6" rx="3" fill="#BFDBFE" opacity="0.4" />
+            <rect x="218" y="244" width="130" height="6" rx="3" fill="#93C5FD" opacity="0.5" />
+            <rect x="218" y="258" width="85" height="6" rx="3" fill="#BFDBFE" opacity="0.4" />
+            <rect x="206" y="272" width="60" height="6" rx="3" fill="#60A5FA" opacity="0.7" />
+            
+            <!-- Base de la laptop y teclado -->
+            <polygon points="160,375 480,375 510,396 130,396" fill="#CBD5E1" />
+            <polygon points="160,375 480,375 486,380 154,380" fill="#B0BEC5" />
+            <!-- Bisel de apertura / trackpad -->
+            <rect x="290" y="380" width="60" height="5" rx="2.5" fill="#94A3B8" />
+          </g>
+
+          <!-- 3. Cinta de Precaución (Hazard Tape) horizontal -->
+          <g>
+            <rect x="180" y="285" width="280" height="26" fill="url(#hazardStripes)" stroke="#1E293B" stroke-width="1.5" />
+          </g>
+
+          <!-- 4. Grúa de Construcción en Azul MotCar -->
+          <g>
+            <!-- Base de la torre -->
+            <rect x="475" y="380" width="32" height="16" rx="3" fill="#093B75" />
+            
+            <!-- Columnas verticales -->
+            <rect x="482" y="95" width="5" height="285" fill="#0E54A4" />
+            <rect x="495" y="95" width="5" height="285" fill="#0E54A4" />
+            
+            <!-- Estructura de celosía diagonal (Truss) -->
+            <line x1="482" y1="110" x2="500" y2="140" stroke="#0E54A4" stroke-width="2.5" />
+            <line x1="500" y1="140" x2="482" y2="170" stroke="#0E54A4" stroke-width="2.5" />
+            <line x1="482" y1="170" x2="500" y2="200" stroke="#0E54A4" stroke-width="2.5" />
+            <line x1="500" y1="200" x2="482" y2="230" stroke="#0E54A4" stroke-width="2.5" />
+            <line x1="482" y1="230" x2="500" y2="260" stroke="#0E54A4" stroke-width="2.5" />
+            <line x1="500" y1="260" x2="482" y2="290" stroke="#0E54A4" stroke-width="2.5" />
+            <line x1="482" y1="290" x2="500" y2="320" stroke="#0E54A4" stroke-width="2.5" />
+            <line x1="500" y1="320" x2="482" y2="350" stroke="#0E54A4" stroke-width="2.5" />
+            <line x1="482" y1="350" x2="500" y2="380" stroke="#0E54A4" stroke-width="2.5" />
+            
+            <!-- Tirantes horizontales -->
+            <line x1="482" y1="140" x2="500" y2="140" stroke="#0E54A4" stroke-width="2" />
+            <line x1="482" y1="200" x2="500" y2="200" stroke="#0E54A4" stroke-width="2" />
+            <line x1="482" y1="260" x2="500" y2="260" stroke="#0E54A4" stroke-width="2" />
+            <line x1="482" y1="320" x2="500" y2="320" stroke="#0E54A4" stroke-width="2" />
+
+            <!-- Cabina del operador de grúa -->
+            <rect x="478" y="95" width="26" height="22" rx="4" fill="#093B75" />
+            <rect x="480" y="98" width="10" height="12" rx="2" fill="#7DD3FC" opacity="0.8" />
+
+            <!-- Cúspide de la torre -->
+            <polygon points="480,95 491,60 502,95" fill="#0E54A4" />
+
+            <!-- Brazo horizontal principal (Pluma) extendiéndose sobre la pantalla -->
+            <rect x="300" y="80" width="240" height="7" rx="2" fill="#0E54A4" />
+            <rect x="300" y="91" width="240" height="4" rx="1" fill="#0E54A4" />
+            
+            <!-- Celosía interna del brazo -->
+            <line x1="315" y1="81" x2="335" y2="92" stroke="#0E54A4" stroke-width="2" />
+            <line x1="335" y1="92" x2="355" y2="81" stroke="#0E54A4" stroke-width="2" />
+            <line x1="355" y1="81" x2="375" y2="92" stroke="#0E54A4" stroke-width="2" />
+            <line x1="375" y1="92" x2="395" y2="81" stroke="#0E54A4" stroke-width="2" />
+            <line x1="395" y1="81" x2="415" y2="92" stroke="#0E54A4" stroke-width="2" />
+            <line x1="415" y1="92" x2="435" y2="81" stroke="#0E54A4" stroke-width="2" />
+            <line x1="435" y1="81" x2="455" y2="92" stroke="#0E54A4" stroke-width="2" />
+
+            <!-- Contrapeso en el extremo derecho -->
+            <rect x="525" y="79" width="22" height="18" rx="3" fill="#475569" />
+            
+            <!-- Cables tensores desde la cúspide -->
+            <line x1="491" y1="60" x2="340" y2="80" stroke="#64748B" stroke-width="2" />
+            <line x1="491" y1="60" x2="535" y2="80" stroke="#64748B" stroke-width="2" />
+
+            <!-- Carrito de elevación y polea -->
+            <rect x="360" y="90" width="20" height="8" rx="2" fill="#072C59" />
+            <circle cx="370" cy="103" r="5.5" fill="#1E293B" />
+            <circle cx="370" cy="103" r="2" fill="#CBD5E1" />
+            
+            <!-- Cable de acero -->
+            <line x1="370" y1="108" x2="370" y2="148" stroke="#334155" stroke-width="3" />
+            <!-- Gancho de carga -->
+            <path d="M370,148 L370,157 A6,6 0 1,1 362,163" stroke="#334155" stroke-width="3.5" fill="none" stroke-linecap="round" />
+          </g>
+
+          <!-- 5. Señal de Peligro Suspendida por la Grúa (Rombo Amarillo con !) -->
+          <g filter="url(#signShadow)">
+            <!-- Argolla de sujeción -->
+            <circle cx="370" cy="173" r="5" stroke="#334155" stroke-width="2.5" fill="none" />
+            <!-- Rombo en Oro MotCar -->
+            <rect x="-30" y="-30" width="60" height="60" rx="10" transform="translate(370, 208) rotate(45)" fill="#DBB51D" stroke="#FFFFFF" stroke-width="4.5" />
+            <rect x="-25" y="-25" width="50" height="50" rx="7" transform="translate(370, 208) rotate(45)" stroke="#B89714" stroke-width="2" fill="none" />
+            <!-- Signo de Exclamación ! -->
+            <path d="M366.5,193 L373.5,193 L372.5,212 L367.5,212 Z" fill="#0A2540" />
+            <circle cx="370" cy="220" r="3.5" fill="#0A2540" />
+          </g>
+
+          <!-- 6. Desarrollador 1: Sentado en la esquina izquierda de la pantalla -->
+          <g>
+            <!-- Piernas colgando del borde de la pantalla -->
+            <rect x="225" y="178" width="9" height="32" rx="4" fill="#1E293B" />
+            <rect x="236" y="178" width="9" height="34" rx="4" fill="#0F172A" />
+            <!-- Zapatos -->
+            <ellipse cx="229" cy="212" rx="6.5" ry="4" fill="#475569" />
+            <ellipse cx="241" cy="214" rx="6.5" ry="4" fill="#475569" />
+
+            <!-- Torso / Camiseta -->
+            <rect x="222" y="146" width="26" height="34" rx="6" fill="#0E54A4" />
+            
+            <!-- Brazos y laptop personal -->
+            <rect x="214" y="162" width="24" height="4.5" rx="2" fill="#E2E8F0" />
+            <polygon points="216,162 225,151 234,162" fill="#CBD5E1" />
+            <circle cx="228" cy="164" r="3.5" fill="#F8D5C2" />
+
+            <!-- Cabeza y Casco Amarillo -->
+            <circle cx="234" cy="135" r="9" fill="#F8D5C2" />
+            <path d="M222,133 Q234,118 246,133 Z" fill="#DBB51D" />
+            <rect x="220" y="132" width="26" height="3.5" rx="1.5" fill="#DBB51D" />
+          </g>
+
+          <!-- 7. Ingeniero 2: De pie en el suelo coordinando las obras -->
+          <g>
+            <!-- Sombra bajo sus pies -->
+            <ellipse cx="434" cy="403" rx="22" ry="5" fill="#CBD5E1" opacity="0.6" />
+            
+            <!-- Pantalones oscuros -->
+            <line x1="426" y1="345" x2="424" y2="397" stroke="#1E293B" stroke-width="8.5" stroke-linecap="round" />
+            <line x1="442" y1="345" x2="445" y2="397" stroke="#0F172A" stroke-width="8.5" stroke-linecap="round" />
+            <!-- Zapatos de seguridad -->
+            <ellipse cx="421" cy="399" rx="8" ry="4.5" fill="#334155" />
+            <ellipse cx="448" cy="399" rx="8" ry="4.5" fill="#334155" />
+
+            <!-- Torso en camisa blanca con chaleco reflectante amarillo MotCar -->
+            <rect x="420" y="298" width="28" height="48" rx="7" fill="#FFFFFF" stroke="#E2E8F0" stroke-width="1.5" />
+            <!-- Chaleco reflectante -->
+            <path d="M420,305 L428,305 L428,346 L420,346 Z" fill="#DBB51D" />
+            <path d="M440,305 L448,305 L448,346 L440,346 Z" fill="#DBB51D" />
+            <line x1="420" y1="324" x2="448" y2="324" stroke="#FFFFFF" stroke-width="3" />
+            
+            <!-- Brazo izquierdo al costado -->
+            <line x1="423" y1="305" x2="418" y2="340" stroke="#FFFFFF" stroke-width="6.5" stroke-linecap="round" />
+            <circle cx="418" cy="342" r="3.5" fill="#F8D5C2" />
+            
+            <!-- Brazo derecho levantado dirigiendo / sosteniendo megáfono -->
+            <line x1="445" y1="305" x2="456" y2="290" stroke="#FFFFFF" stroke-width="6.5" stroke-linecap="round" />
+            <polygon points="456,290 472,282 472,302" fill="#0E54A4" />
+            <rect x="453" y="288" width="5" height="8" rx="2" fill="#DBB51D" />
+
+            <!-- Cuello, Cabeza y Casco Amarillo -->
+            <rect x="431" y="290" width="6" height="8" fill="#F8D5C2" />
+            <circle cx="434" cy="282" r="10" fill="#F8D5C2" />
+            <path d="M421,280 Q434,263 447,280 Z" fill="#DBB51D" />
+            <rect x="418" y="278" width="32" height="4" rx="2" fill="#DBB51D" />
+          </g>
+
+          <!-- 8. Conos de Tráfico y Seguridad (Oro MotCar y Blanco) -->
+          <!-- Cono Izquierdo -->
+          <g>
+            <ellipse cx="190" cy="404" rx="18" ry="4" fill="#CBD5E1" opacity="0.6" />
+            <rect x="176" y="398" width="28" height="5" rx="1.5" fill="#DBB51D" />
+            <polygon points="179,398 190,364 201,398" fill="#DBB51D" />
+            <polygon points="181,392 184,382 196,382 199,392" fill="#FFFFFF" />
+            <polygon points="186,376 188,370 192,370 194,376" fill="#FFFFFF" />
+          </g>
+
+          <!-- Cono Derecho -->
+          <g>
+            <ellipse cx="468" cy="404" rx="18" ry="4" fill="#CBD5E1" opacity="0.6" />
+            <rect x="454" y="398" width="28" height="5" rx="1.5" fill="#DBB51D" />
+            <polygon points="457,398 468,364 479,398" fill="#DBB51D" />
+            <polygon points="459,392 462,382 474,382 477,392" fill="#FFFFFF" />
+            <polygon points="464,376 466,370 470,370 472,376" fill="#FFFFFF" />
+          </g>
+        </svg>
+      </div>
+    </section>
+
+    <!-- Pie de Tarjeta Institucional -->
+    <footer class="card-footer">
+      <div>MOTCAR © 2026 • Todos los derechos reservados</div>
+    </footer>
+  </main>
+
+</body>
+</html>
