@@ -131,6 +131,62 @@ async function handleGenerateQuotes(): Promise<void> {
   }
 }
 
+const recalculateDialogOpen = ref(false)
+const recalculateBaseDate = ref('')
+
+function openRecalculateDialog(): void {
+  const currentBaseDate = statement.value?.participant?.frequency_base_date
+  if (currentBaseDate) {
+    recalculateBaseDate.value = currentBaseDate.substring(0, 10)
+  } else if (statement.value?.installments && statement.value.installments.length > 0) {
+    recalculateBaseDate.value = statement.value.installments[0].due_date.substring(0, 10)
+  } else {
+    recalculateBaseDate.value = new Date().toISOString().substring(0, 10)
+  }
+  recalculateDialogOpen.value = true
+}
+
+async function handleConfirmRecalculate(): Promise<void> {
+  const gId = effectiveGroupId.value
+  const pId = props.participantId || statement.value?.participant?.id
+  const bId = branchesStore.activeBranchId
+
+  if (!gId || !pId || !bId) return
+  if (!canGenerateQuotes.value) return
+
+  isGenerating.value = true
+  try {
+    const payload = recalculateBaseDate.value ? { frequency_base_date: recalculateBaseDate.value } : undefined
+    const res = await generateParticipantReceivables(bId, gId, pId, payload)
+    const count = res.data?.generated ?? 0
+    feedbackSnackbar.value = {
+      show: true,
+      text: `Cuotas recalculadas exitosamente (${count} ${count === 1 ? 'cuota' : 'cuotas'}).`,
+      color: 'success'
+    }
+    recalculateDialogOpen.value = false
+    emit('quotes-generated')
+    emit('message', `Cuotas recalculadas exitosamente (${count} ${count === 1 ? 'cuota' : 'cuotas'}).`, 'success')
+    // Sincronizar inmediatamente la tabla y los totales
+    await loadStatement(true)
+  } catch (err: unknown) {
+    const errorObj = err as any
+    const msg =
+      errorObj?.response?.data?.messages?.error ||
+      errorObj?.response?.data?.message ||
+      errorObj?.response?.data?.error ||
+      (err instanceof Error ? err.message : 'Error al recalcular cuotas del participante.')
+    feedbackSnackbar.value = {
+      show: true,
+      text: msg,
+      color: 'error'
+    }
+    emit('message', msg, 'error')
+  } finally {
+    isGenerating.value = false
+  }
+}
+
 watch(() => [isOpen.value, props.participantId], ([open, pid]) => {
   if (open && pid) {
     loadStatement()
@@ -219,6 +275,10 @@ const nextPendingDueDate = computed<string>(() => {
                   <span>&bull;</span>
                   <span>Turno: <strong>{{ statement.participant.position ? `#${statement.participant.position}` : 'N/A' }}</strong></span>
                   <span>&bull;</span>
+                  <template v-if="statement.participant.frequency_base_date">
+                    <span>Fecha Base: <strong>{{ statement.participant.frequency_base_date }}</strong></span>
+                    <span>&bull;</span>
+                  </template>
                   <span>Próx. Vencimiento: <strong>{{ nextPendingDueDate }}</strong></span>
                 </div>
               </v-col>
@@ -337,6 +397,20 @@ const nextPendingDueDate = computed<string>(() => {
             </div>
 
             <div class="d-flex align-center ga-2">
+              <v-btn
+                v-if="canGenerateQuotes && statement.installments && statement.installments.length > 0"
+                color="primary"
+                variant="tonal"
+                size="small"
+                prepend-icon="mdi-calculator-variant"
+                :loading="isGenerating"
+                :disabled="statement.summary.installments_pending === 0"
+                data-testid="statement-recalculate-btn"
+                @click="openRecalculateDialog"
+              >
+                Recalcular cuotas
+              </v-btn>
+
               <v-tooltip
                 text="Recargar cronograma"
                 location="top"
@@ -452,6 +526,72 @@ const nextPendingDueDate = computed<string>(() => {
       <v-card-actions class="pa-3 bg-grey-lighten-5 justify-start">
         <v-btn variant="plain" @click="isOpen = false">Cerrar</v-btn>
       </v-card-actions>
+
+      <!-- Diálogo de Confirmación para Recalcular Cuotas -->
+      <v-dialog v-model="recalculateDialogOpen" max-width="480" persistent>
+        <v-card rounded="lg" data-testid="recalculate-quotes-dialog">
+          <v-toolbar color="primary" density="compact" class="px-2">
+            <v-toolbar-title class="text-subtitle-2 font-weight-bold d-flex align-center ga-2">
+              <v-icon size="18">mdi-calculator-variant</v-icon>
+              <span>Recalcular cuotas</span>
+            </v-toolbar-title>
+            <v-spacer />
+            <v-btn icon="mdi-close" variant="text" size="small" :disabled="isGenerating" @click="recalculateDialogOpen = false" />
+          </v-toolbar>
+
+          <v-card-text class="pa-4">
+            <p class="text-body-2 text-medium-emphasis mb-3">
+              Al recalcular las cuotas, se volverán a generar las fechas de vencimiento de las cuotas pendientes tomando como referencia la fecha base de cobro.
+            </p>
+
+            <v-alert
+              v-if="statement && statement.summary.installments_paid > 0"
+              type="info"
+              variant="tonal"
+              density="compact"
+              class="mb-3 text-caption"
+              rounded="lg"
+            >
+              Este participante cuenta con {{ statement.summary.installments_paid }} {{ statement.summary.installments_paid === 1 ? 'cuota cancelada o abonada' : 'cuotas canceladas o abonadas' }}, las cuales se mantendrán intactas.
+            </v-alert>
+
+            <v-text-field
+              v-model="recalculateBaseDate"
+              label="Fecha Base de Cobro"
+              type="date"
+              variant="outlined"
+              density="comfortable"
+              hint="Indica la fecha inicial para calcular las fechas de pago"
+              persistent-hint
+              data-testid="input-recalculate-base-date"
+            />
+          </v-card-text>
+
+          <v-divider />
+
+          <v-card-actions class="pa-3 bg-grey-lighten-5 justify-end ga-2">
+            <v-btn
+              variant="plain"
+              :disabled="isGenerating"
+              data-testid="btn-cancel-recalculate"
+              @click="recalculateDialogOpen = false"
+            >
+              Cancelar
+            </v-btn>
+            <v-btn
+              color="primary"
+              variant="flat"
+              prepend-icon="mdi-calculator-variant"
+              :loading="isGenerating"
+              :disabled="!recalculateBaseDate"
+              data-testid="btn-confirm-recalculate"
+              @click="handleConfirmRecalculate"
+            >
+              Recalcular
+            </v-btn>
+          </v-card-actions>
+        </v-card>
+      </v-dialog>
 
       <!-- Snackbar de Notificaciones Internas -->
       <v-snackbar

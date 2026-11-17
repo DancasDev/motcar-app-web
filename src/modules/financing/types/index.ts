@@ -379,6 +379,7 @@ export interface ParticipantStatement {
     benefit_metadata: Record<string, any> | null
     installment_amount: number
     installment_count: number
+    frequency_base_date?: string | null
   }
   client: {
     id: number

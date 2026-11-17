@@ -215,11 +215,12 @@ export async function restoreParticipant(
 export async function generateParticipantReceivables(
   branchId: string | number,
   groupId: string | number,
-  participantId: string | number
+  participantId: string | number,
+  payload?: { frequency_base_date?: string }
 ): Promise<ApiResponse<GenerateReceivablesSummary>> {
   const response = await apiClient.post<ApiResponse<GenerateReceivablesSummary>>(
     ENDPOINTS.FINANCING.PARTICIPANT_GENERATE_RECEIVABLES(branchId, groupId, participantId),
-    {}
+    payload ?? {}
   )
   return response.data
 }
